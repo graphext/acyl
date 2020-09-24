@@ -1,0 +1,79 @@
+swagger: "2.0"
+info:
+  title: Acyl
+  description: The Acyl API provides authenticated users an array of options to create and manage dynamic environments.
+  contact:
+    name: Benjamen Keroack
+    email: benjamen@dollarshaveclub.com
+  license:
+    name: MIT
+  version: v0.7.6
+tags:
+  - name: ui
+    description: "user interface endpoints"
+paths:
+  /env/envname:
+    get:
+      tags:
+        - ui
+      summary: returns status page
+      operationId: getEnv
+      produces:
+        - "application/json"
+      parameters:
+        - name: envname
+          in: query
+          description: event log identifier
+          type: string
+          required: true
+      responses:
+        200:
+          description: success, render environment page
+        400:
+          description: bad request getting environment page for envname, or permitted repository
+        401:
+          description: unauthorized github user session
+        404:
+          description: environment page not found for envname
+        500:
+          description: internal server error
+  /event/status:
+    get:
+      tags:
+        - ui
+      summary: returns status page
+      operationId: getStatus
+      produces:
+        - "application/json"
+      parameters:
+        - name: id
+          in: query
+          description: event log identifier
+          type: string
+          required: true
+      responses:
+        200:
+          description: success, render status page
+        400:
+          description: bad request getting status page for id
+        401:
+          description: unauthorized github user session
+        404:
+          description: status page not found for id
+        500:
+          description: internal server error
+  /home:
+    get:
+      tags:
+        - ui
+      summary: returns home page
+      operationId: getHome
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: success, render status page
+        401:
+          description: unauthorized github user session
+        500:
+          description: internal server error
