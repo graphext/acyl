@@ -6,31 +6,38 @@ target_branches:
 
 application:
   chart_path: '.helm/charts/acyl'
-  chart_vars_repo_path: 'dollarshaveclub/helm-charts@master:releases/kube.shave.io/acyl/dqa.yml'
-  image: quay.io/dollarshaveclub/acyl
+  chart_vars_path: '.helm/charts/acyl/values.yaml'
+  image: eu.gcr.io/graphext-0/testing/acyl
   value_overrides:
-    - "app.ui.enforce_oauth=true"
-# uncomment to disable traefik ingress
-#    - "ingress.traefik.enabled=false"
-# uncomment to use in-environment Furan
-#    - "app.furan_addr=furan:4001"
-#    - "image.pullPolicy=IfNotPresent"
-# local:
-#    - "app.dogstatsd_addr=1.2.3.4:8125"
-#    - "app.secrets_backend=env"
-#    - "app.secrets_mapping=ACYL_{{ .ID }}"
-#    - "app.secrets_from_env=true"
-#    - "app.k8s_secret_injections="
-#    - "app.operation_timeout_override=10m"
-#    - "app.k8s_secret_injections=image-pull-secret=k8s/image_pull_secret"
-#    - "app.ui_base_url=http://192.168.64.10:4000"
-#    - "cronautoscaling.enabled=false"
+  - "ingress.traefik.enabled=false"
+  - "ingress.argo_host=acyl.testing.graphext.com"
+  - "image.pullPolicy=IfNotPresent"
+  - "app.furan_addr=furan:4001"
+  - "app.ui.enforce_oauth=true"
+  - "app.dogstatsd_addr=1.2.3.4:8125"
+  - "app.secrets_backend=env"
+  - "app.secrets_mapping=ACYL_{{ .ID }}"
+  - "app.secrets_from_env=true"
+  - "app.k8s_secret_injections="
+  - "app.operation_timeout_override=10m"
+  - "app.k8s_secret_injections=image-pull-secret=k8s/image_pull_secret"
+  - "app.ui.base_url=https://acyl.testing.graphext.com"
+  - "app.metrics_tags=local:acyl"
+  - "cronautoscaling.enabled=false"
+  - "serviceaccount=default"
+  - "replicaCount=1"
+  - "image.tag=048cfcd73336eb6002ee0bb4c90bd3e3d2b5a924"
+  - "image.repository=eu.gcr.io/graphext-0/testing/acyl"
 
 dependencies:
   direct:
-    - repo: dollarshaveclub/furan
+    - repo: militarpancho/furan
       name: furan
       default_branch: master
+      value_overrides:
+        - "replicaCount=1"
+        - "image.tag=350b42a8d0e0a7f0e936980da63e5571dd245b37"
+
     - chart_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql'
       chart_vars_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql/values.yaml'
       value_overrides:

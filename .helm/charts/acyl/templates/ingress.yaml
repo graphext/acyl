@@ -2,12 +2,15 @@
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-  name: fastly-dqa
+  name: acyl
   labels:
     chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
   namespace: {{ .Values.namespace }}
   annotations:
-      kubernetes.io/ingress.class: 
+      kubernetes.io/ingress.class: nginx
+      ingress.kubernetes.io/ssl-redirect: "true"
+      kubernetes.io/tls-acme: "true"
+
 spec:
   rules:
     {{- if .Values.is_dqa }}
@@ -21,4 +24,8 @@ spec:
             backend:
               serviceName: {{ .Values.service.name }}
               servicePort: {{ .Values.service.internalPort }}
+  tls:
+  - hosts:
+    - {{ .Values.ingress.argo_host }}
+    secretName: {{ .Values.ingress.argo_host }}-tls
 {{- end }}
