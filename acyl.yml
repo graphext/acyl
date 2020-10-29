@@ -44,7 +44,7 @@ dependencies:
         - "image.tag=9.6"
         - "postgresqlPassword=root"
         - "postgresqlDatabase=acyl"
-        - "persistence.enabled=false"
+        - "persistence.enabled=true"
         - "fullnameOverride=postgresql-postgresql"
 
 notifications:
