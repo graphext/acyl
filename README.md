@@ -61,3 +61,17 @@ For more details, see [Local Development](https://github.com/dollarshaveclub/acy
 ## Further Reading
 - [User Guide](https://github.com/dollarshaveclub/acyl/wiki/User-Guide)
 - [acyl.yml v2 Specification](https://github.com/dollarshaveclub/acyl/wiki/Acyl.yml-V2-Specification)
+
+
+## ADMIN GUIDE
+
+### Create acyl deployment with acyl itself
+- `GITHUB_TOKEN=*********** acyl config test create --image-build-mode=none -v --search-paths $HOME/Projects/acyl
+- Create and get secrets from github app. Apply to dummy-acyl-secrets configmap
+
+### Run DB migrations
+
+On one terminal forward db port to your computer:
+- `kubectl -n=nitro-4893-pacifist-constable port-forward postgresql-postgresql-0 5432:5432`
+On another, run migrations with acyl cli:
+- `acyl pg-migrate --postgres-uri "postgresql://postgres:root@localhost:5432/acyl?sslmode=disable"`
