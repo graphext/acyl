@@ -24,7 +24,7 @@ application:
   - "app.ui.base_url=https://acyl.testing.graphext.com"
   - "app.metrics_tags=local:acyl"
   - "cronautoscaling.enabled=false"
-  - "serviceaccount=default"
+  - "serviceaccount=nitro"
   - "replicaCount=1"
   - "image.tag=048cfcd73336eb6002ee0bb4c90bd3e3d2b5a924"
   - "image.repository=eu.gcr.io/graphext-0/testing/acyl"

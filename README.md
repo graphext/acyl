@@ -67,11 +67,37 @@ For more details, see [Local Development](https://github.com/dollarshaveclub/acy
 
 ### Create acyl deployment with acyl itself
 - `GITHUB_TOKEN=*********** acyl config test create --image-build-mode=none -v --search-paths $HOME/Projects/acyl
-- Create and get secrets from github app. Apply to dummy-acyl-secrets configmap
-
+- Create github application, setting up oauth and github permissions:
+  * Contents: Read-only
+  * Metadata: Read-only
+  * Pull Requets: Read-only
+  * Webhooks: Read-only
+  * Commit statuses: Read and write
+  * Members: Read-only
+  * events: pull request pull request review, pull request review comment
+- Create and get secrets from github app. Apply to dummy-acyl-secrets secret.
+- Generate github token to access repo and add it to furan dummy secrets
 ### Run DB migrations
 
 On one terminal forward db port to your computer:
-- `kubectl -n=nitro-4893-pacifist-constable port-forward postgresql-postgresql-0 5432:5432`
+- `kubectl -n=<nm> port-forward postgresql-postgresql-0 5432:5432`
 On another, run migrations with acyl cli:
 - `acyl pg-migrate --postgres-uri "postgresql://postgres:root@localhost:5432/acyl?sslmode=disable"`
+
+### Add neccessary rbac
+
+Example:
+```
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: acyl
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: nitro
+  namespace: <nm>
+```
