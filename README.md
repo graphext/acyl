@@ -65,8 +65,13 @@ For more details, see [Local Development](https://github.com/dollarshaveclub/acy
 
 ## ADMIN GUIDE
 
+### Build Acyl image
+
+- `GITHUB_TOKEN=*********** acyl config test create --image-build-mode=docker-nopush -v --search-paths $HOME/Projects/acyl`
+- Tag new image and upload to your registry
+
 ### Create acyl deployment with acyl itself
-- `GITHUB_TOKEN=*********** acyl config test create --image-build-mode=none -v --search-paths $HOME/Projects/acyl
+- `GITHUB_TOKEN=*********** acyl config test create --image-build-mode=none -v --search-paths $HOME/Projects/acyl`
 - Create github application, setting up oauth and github permissions:
   * Contents: Read-only
   * Metadata: Read-only
