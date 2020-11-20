@@ -110,7 +110,7 @@ func TestMetahelmGenerateCharts(t *testing.T) {
 				checkOverrideString := func(overrides []byte, name, value string) error {
 					om := map[string]interface{}{}
 					if err := yaml.Unmarshal(overrides, &om); err != nil {
-						return fmt.Errorf("error unmarshaling overrides: %w", err)
+						return errors.Wrap(err, "error unmarshaling overrides")
 					}
 					vi, ok := om[name]
 					if !ok {
@@ -127,19 +127,19 @@ func TestMetahelmGenerateCharts(t *testing.T) {
 				}
 				for _, chart := range charts {
 					if err := checkOverrideString(chart.ValueOverrides, models.DefaultNamespaceValue, "fake-name"); err != nil {
-						return fmt.Errorf("error checking override: %w", err)
+						return errors.Wrap(err, "error checking override")
 					}
 				}
 				chart := cm["foo-bar"]
 				if err := checkOverrideString(chart.ValueOverrides, "something", "qqqq"); err != nil {
-					return fmt.Errorf("error checking something override: %w", err)
+					return errors.Wrap(err, "error checking something override")
 				}
 				chart = cm["bar-baz"]
 				if err := checkOverrideString(chart.ValueOverrides, "somethingelse", "zzzz"); err != nil {
-					return fmt.Errorf("error checking somethingelse override: %w", err)
+					return errors.Wrap(err, "error checking somethingelse override")
 				}
 				if err := checkOverrideString(chart.ValueOverrides, "yetanotherthing", "yyyy"); err != nil {
-					return fmt.Errorf("error checking yetanotherthing override: %w", err)
+					return errors.Wrap(err, "error checking yetanotherthing override")
 				}
 				return nil
 			},

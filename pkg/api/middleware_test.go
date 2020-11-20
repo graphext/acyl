@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -10,16 +9,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dollarshaveclub/acyl/pkg/models"
 	"github.com/gorilla/securecookie"
 
 	"github.com/dollarshaveclub/acyl/pkg/persistence"
 )
 
 const (
-	testValidMasterAPIKey = "foo"
-	testInvalidAPIKey     = "24c1ea12-0a99-11eb-adc1-0242ac120002"
-	testCIDR              = "10.10.0.0/16"
+	testValidAPIKey   = "foo"
+	testInvalidAPIKey = "bar"
+	testCIDR          = "10.10.0.0/16"
 )
 
 func TestMiddlewareIPWhitelistSuccess(t *testing.T) {
@@ -56,29 +54,25 @@ func TestMiddlewareIPWhitelistFailure(t *testing.T) {
 	}
 }
 
-func TestMiddlewareMasterAPIKeyAuthSuccess(t *testing.T) {
-	dl := persistence.NewFakeDataLayer()
-	authMiddleware.apiKeys = []string{testValidMasterAPIKey}
-	authMiddleware.DL = dl
+func TestMiddlewareAuthSuccess(t *testing.T) {
+	authMiddleware.apiKeys = []string{testValidAPIKey}
 	rc := httptest.NewRecorder()
 	h := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }
-	mh := middlewareChain(authMiddleware.tokenAuth(h, models.ReadOnlyPermission))
-	req, _ := http.NewRequest("GET", "/envs/", nil)
-	req.Header.Add(apiKeyHeader, testValidMasterAPIKey)
+	mh := middlewareChain(h, authMiddleware.authRequest)
+	req, _ := http.NewRequest("GET", "/", nil)
+	req.Header.Add(apiKeyHeader, testValidAPIKey)
 	mh(rc, req)
 	if rc.Code != http.StatusNoContent {
 		t.Fatalf("should have succeeded")
 	}
 }
 
-func TestMiddlewareInvalidMasterAPIKeyAuthFailure(t *testing.T) {
-	dl := persistence.NewFakeDataLayer()
-	authMiddleware.apiKeys = []string{testValidMasterAPIKey}
-	authMiddleware.DL = dl
+func TestMiddlewareAuthFailure(t *testing.T) {
+	authMiddleware.apiKeys = []string{testValidAPIKey}
 	rc := httptest.NewRecorder()
 	h := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }
-	mh := middlewareChain(authMiddleware.tokenAuth(h, models.ReadOnlyPermission))
-	req, _ := http.NewRequest("GET", "/envs/", nil)
+	mh := middlewareChain(h, authMiddleware.authRequest)
+	req, _ := http.NewRequest("GET", "/", nil)
 	req.Header.Add(apiKeyHeader, testInvalidAPIKey)
 	mh(rc, req)
 	if rc.Code != http.StatusUnauthorized {
@@ -86,71 +80,8 @@ func TestMiddlewareInvalidMasterAPIKeyAuthFailure(t *testing.T) {
 	}
 }
 
-func TestMiddlewareValidAPIKeyAuthGetSuccess(t *testing.T) {
-	dl := persistence.NewFakeDataLayer()
-	id, _ := dl.CreateAPIKey(context.Background(), models.ReadOnlyPermission, "foo", "foo description", "jackhandy")
-	authMiddleware.apiKeys = []string{testValidMasterAPIKey}
-	authMiddleware.DL = dl
-	rc := httptest.NewRecorder()
-	h := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }
-	mh := middlewareChain(authMiddleware.tokenAuth(h, models.ReadOnlyPermission))
-	req, _ := http.NewRequest("GET", "/envs/some-environment", nil)
-	req.Header.Add(apiKeyHeader, id.String())
-	mh(rc, req)
-	if rc.Code != http.StatusNoContent {
-		t.Fatalf("should have succeeded")
-	}
-}
-
-func TestMiddlewareInvalidAPIKeyAuthParseFailure(t *testing.T) {
-	dl := persistence.NewFakeDataLayer()
-	authMiddleware.apiKeys = []string{testValidMasterAPIKey}
-	authMiddleware.DL = dl
-	rc := httptest.NewRecorder()
-	h := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }
-	mh := middlewareChain(authMiddleware.tokenAuth(h, models.ReadOnlyPermission))
-	req, _ := http.NewRequest("GET", "/envs/some-environment", nil)
-	req.Header.Add(apiKeyHeader, "invalid-key")
-	mh(rc, req)
-	if rc.Code != http.StatusForbidden {
-		t.Fatalf("should have succeeded")
-	}
-}
-
-func TestMiddlewareValidAPIKeyAuthReadOnlyDeleteFailure(t *testing.T) {
-	dl := persistence.NewFakeDataLayer()
-	id, _ := dl.CreateAPIKey(context.Background(), models.WritePermission, "foo", "foo description", "johnsmith")
-	authMiddleware.apiKeys = []string{testValidMasterAPIKey}
-	authMiddleware.DL = dl
-	rc := httptest.NewRecorder()
-	h := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }
-	mh := middlewareChain(authMiddleware.tokenAuth(h, models.AdminPermission))
-	req, _ := http.NewRequest("DELETE", "/envs/some-environment", nil)
-	req.Header.Add(apiKeyHeader, id.String())
-	mh(rc, req)
-	if rc.Code != http.StatusUnauthorized {
-		t.Fatalf("should have succeeded")
-	}
-}
-
-func TestMiddlewareValidAPIKeyAuthAdminGetSuccess(t *testing.T) {
-	dl := persistence.NewFakeDataLayer()
-	id, _ := dl.CreateAPIKey(context.Background(), models.AdminPermission, "foo", "foo description", "janejones")
-	authMiddleware.apiKeys = []string{testValidMasterAPIKey}
-	authMiddleware.DL = dl
-	rc := httptest.NewRecorder()
-	h := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }
-	mh := middlewareChain(authMiddleware.tokenAuth(h, models.ReadOnlyPermission))
-	req, _ := http.NewRequest("GET", "/envs/some-environment", nil)
-	req.Header.Add(apiKeyHeader, id.String())
-	mh(rc, req)
-	if rc.Code != http.StatusNoContent {
-		t.Fatalf("should have succeeded")
-	}
-}
-
 func TestMiddlewareWaitGroupDelay(t *testing.T) {
-	authMiddleware.apiKeys = []string{testValidMasterAPIKey}
+	authMiddleware.apiKeys = []string{testValidAPIKey}
 	rc := httptest.NewRecorder()
 	h := func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(250 * time.Millisecond)
@@ -158,7 +89,7 @@ func TestMiddlewareWaitGroupDelay(t *testing.T) {
 	}
 	mh := middlewareChain(h, waitMiddleware.waitOnRequest)
 	req, _ := http.NewRequest("GET", "/", nil)
-	req.Header.Add(apiKeyHeader, testValidMasterAPIKey)
+	req.Header.Add(apiKeyHeader, testValidAPIKey)
 
 	start := time.Now()
 	go mh(rc, req)

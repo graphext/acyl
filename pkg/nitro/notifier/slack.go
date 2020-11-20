@@ -1,10 +1,9 @@
 package notifier
 
 import (
-	"fmt"
-
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/nlopes/slack"
+	"github.com/pkg/errors"
 )
 
 // SlackAPIClient describes the methods we use on slack.Client
@@ -25,7 +24,7 @@ var _ Backend = &SlackBackend{}
 func (sb *SlackBackend) Send(n Notification) error {
 	p, err := sb.render(n)
 	if err != nil || p == nil {
-		return fmt.Errorf("error rendering notification: %w", err)
+		return errors.Wrap(err, "error rendering notification")
 	}
 	p.Username = sb.Username
 	p.IconURL = sb.IconURL
@@ -52,7 +51,7 @@ func (sb *SlackBackend) Send(n Notification) error {
 func (sb *SlackBackend) render(n Notification) (*slack.PostMessageParameters, error) {
 	rn, err := n.Template.Render(n.Data)
 	if err != nil {
-		return nil, fmt.Errorf("error rendering template: %w", err)
+		return nil, errors.Wrap(err, "error rendering template")
 	}
 	out := &slack.PostMessageParameters{Text: rn.Title, Attachments: make([]slack.Attachment, len(rn.Sections))}
 	for i, s := range rn.Sections {

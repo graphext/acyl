@@ -77,7 +77,7 @@ func cleanup(cmd *cobra.Command, args []string) {
 
 	cleaner.Clean()
 
-	ci, err := metahelm.NewChartInstaller(nil, dl, nil, nil, k8sConfig.GroupBindings, k8sConfig.PrivilegedRepoWhitelist, k8sConfig.SecretInjections, tillerConfig, k8sClientConfig.JWTPath, true)
+	ci, err := metahelm.NewChartInstaller(nil, dl, nil, nil, k8sConfig.GroupBindings, k8sConfig.PrivilegedRepoWhitelist, k8sConfig.SecretInjections, metahelm.TillerConfig{}, k8sClientConfig.JWTPath, true)
 	if err != nil {
 		log.Fatalf("error getting metahelm chart installer: %v", err)
 	}

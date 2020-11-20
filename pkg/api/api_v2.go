@@ -133,8 +133,6 @@ func statusSummaryStatus(s models.EventStatus) string {
 		return "done"
 	case models.FailedStatus:
 		return "failed"
-	case models.CancelledStatus:
-		return "cancelled"
 	default:
 		return "default"
 	}
@@ -293,9 +291,9 @@ func (api *v2api) register(r *muxtrace.Router) error {
 	// v2 routes
 
 	// API token
-	r.HandleFunc("/v2/envs/_search", middlewareChain(authMiddleware.tokenAuth(api.envSearchHandler, models.ReadOnlyPermission))).Methods("GET")
-	r.HandleFunc("/v2/envs/{name}", middlewareChain(authMiddleware.tokenAuth(api.envDetailHandler, models.ReadOnlyPermission))).Methods("GET")
-	r.HandleFunc("/v2/eventlog/{id}", middlewareChain(authMiddleware.tokenAuth(api.eventLogHandler, models.ReadOnlyPermission))).Methods("GET")
+	r.HandleFunc("/v2/envs/_search", middlewareChain(api.envSearchHandler, authMiddleware.authRequest)).Methods("GET")
+	r.HandleFunc("/v2/envs/{name}", middlewareChain(api.envDetailHandler, authMiddleware.authRequest)).Methods("GET")
+	r.HandleFunc("/v2/eventlog/{id}", middlewareChain(api.eventLogHandler, authMiddleware.authRequest)).Methods("GET")
 
 	// Session auth
 	r.HandleFunc("/v2/event/{id}/status", middlewareChain(api.eventStatusHandler, sessionAuthMiddleware.sessionAuth)).Methods("GET")
@@ -995,7 +993,7 @@ func (api *v2api) userEnvPodContainersHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 	v2enpc = V2EnvNamePodContainers{
-		Name:       podname,
+		Name: podname,
 		Containers: podContainers.Containers,
 	}
 	if err := json.NewEncoder(w).Encode(&v2enpc); err != nil {

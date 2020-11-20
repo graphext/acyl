@@ -13,11 +13,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
 	"github.com/pkg/errors"
 
 	"github.com/dollarshaveclub/acyl/pkg/models"
-	"github.com/dollarshaveclub/metahelm/pkg/metahelm"
 )
 
 type lockingDataMap struct {
@@ -28,7 +26,6 @@ type lockingDataMap struct {
 	k8s        map[string]*models.KubernetesEnvironment
 	elogs      map[uuid.UUID]*models.EventLog
 	uisessions map[int]*models.UISession
-	apikeys    map[uuid.UUID]*models.APIKey
 }
 
 // FakeDataLayer is a fake implementation of DataLayer that persists data in-memory, for testing purposes
@@ -47,7 +44,6 @@ func newLockingDataMap() *lockingDataMap {
 		k8s:        make(map[string]*models.KubernetesEnvironment),
 		elogs:      make(map[uuid.UUID]*models.EventLog),
 		uisessions: make(map[int]*models.UISession),
-		apikeys:    make(map[uuid.UUID]*models.APIKey),
 	}
 }
 
@@ -983,20 +979,6 @@ func (fdl *FakeDataLayer) SetEventStatusCompleted(id uuid.UUID, status models.Ev
 	return nil
 }
 
-func (fdl *FakeDataLayer) SetEventStatusFailed(id uuid.UUID, ce metahelm.ChartError) error {
-	fdl.doDelay()
-	fdl.data.Lock()
-	defer fdl.data.Unlock()
-	elog := fdl.data.elogs[id]
-	if elog == nil {
-		return errors.New("eventlog not found")
-	}
-	elog.Status.Config.Status = models.FailedStatus
-	elog.Status.Config.Completed = time.Now().UTC()
-	elog.Status.Config.FailedResources = ce
-	return nil
-}
-
 func (fdl *FakeDataLayer) SetEventStatusImageStarted(id uuid.UUID, name string) error {
 	fdl.doDelay()
 	fdl.data.Lock()
@@ -1171,78 +1153,4 @@ func (fdl *FakeDataLayer) DeleteExpiredUISessions() (uint, error) {
 		delete(fdl.data.uisessions, k)
 	}
 	return uint(len(rmkeys)), nil
-}
-
-func (fdl *FakeDataLayer) CreateAPIKey(ctx context.Context, permissionLevel models.PermissionLevel, name, description, githubUser string) (uuid.UUID, error) {
-	fdl.doDelay()
-	fdl.data.Lock()
-	defer fdl.data.Unlock()
-	id, err := uuid.NewRandom()
-	if err != nil {
-		return uuid.Nil, errors.Wrap(err, "error creating new random uuid")
-	}
-	key := &models.APIKey{
-		ID:              id,
-		Created:         time.Now().UTC(),
-		LastUsed:        pq.NullTime{Time: time.Now().UTC(), Valid: true},
-		PermissionLevel: permissionLevel,
-		Name:            name,
-		Description:     description,
-		GitHubUser:      githubUser,
-	}
-	fdl.data.apikeys[id] = key
-	return id, nil
-}
-
-func (fdl *FakeDataLayer) GetAPIKeyById(ctx context.Context, id uuid.UUID) (*models.APIKey, error) {
-	fdl.doDelay()
-	fdl.data.RLock()
-	defer fdl.data.RUnlock()
-	out := models.APIKey{}
-	ak, ok := fdl.data.apikeys[id]
-	if !ok {
-		return nil, nil
-	}
-	out = *ak
-	return &out, nil
-}
-
-func (fdl *FakeDataLayer) GetAPIKeysByGithubUser(ctx context.Context, githubUser string) ([]*models.APIKey, error) {
-	fdl.doDelay()
-	fdl.data.RLock()
-	defer fdl.data.RUnlock()
-	var keys []*models.APIKey
-	for _, v := range fdl.data.apikeys{
-		if v.GitHubUser == githubUser{
-			keys = append(keys, v)
-		}
-	}
-	if len(keys) == 0 {
-		return nil, nil
-	}
-	return keys, nil
-}
-
-func (fdl *FakeDataLayer) UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID) error {
-	fdl.doDelay()
-	fdl.data.Lock()
-	defer fdl.data.Unlock()
-	ak, ok := fdl.data.apikeys[id]
-	if !ok {
-		return nil
-	}
-	ak.LastUsed = pq.NullTime{Time: time.Now().UTC(), Valid: true}
-	return nil
-}
-
-func (fdl *FakeDataLayer) DeleteAPIKey(ctx context.Context, id uuid.UUID) error {
-	fdl.doDelay()
-	fdl.data.Lock()
-	defer fdl.data.Unlock()
-	_, ok := fdl.data.apikeys[id]
-	if !ok {
-		return nil
-	}
-	delete(fdl.data.apikeys, id)
-	return nil
 }

@@ -72,15 +72,17 @@ spec:
           - "--vault-k8s-auth-path"
           - "{{ .Values.vault.auth_path }}"
         {{ end }}
-        {{ if .Values.app.tiller_image }}
-          - "--tiller-image"
-          - "{{ .Values.app.tiller_image }}"
-        {{ end }}
     {{ if eq .Values.app.debug_endpoints true }}
           - "--debug-endpoints"
     {{ end }}
           - "--k8s-secret-injections"
           - "{{ .Values.app.k8s_secret_injections }}"
+          - "--failure-report-s3-region"
+          - "{{ .Values.app.failure_reports.s3.region }}"
+          - "--failure-report-s3-bucket"
+          - "{{ .Values.app.failure_reports.s3.bucket }}"
+          - "--failure-report-s3-key-prefix"
+          - "{{ .Values.app.failure_reports.s3.keyprefix }}"
           - "--k8s-group-bindings"
           - "{{ .Values.app.k8s_group_bindings }}"
           {{ if .Values.app.operation_timeout_override }}
@@ -125,6 +127,16 @@ spec:
         volumeMounts:
         env:
           {{ if .Values.app.secrets_from_env }}
+          - name: ACYL_AWS_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: dummy-acyl-secrets
+                key: aws_access_key_id
+          - name: ACYL_AWS_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: dummy-acyl-secrets
+                key: aws_secret_access_key
           - name: ACYL_GITHUB_HOOK_SECRET
             valueFrom:
               secretKeyRef:

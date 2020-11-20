@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dollarshaveclub/metahelm/pkg/metahelm"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
@@ -33,16 +32,8 @@ func (el EventLog) Columns() string {
 	return strings.Join([]string{"id", "created", "updated", "env_name", "repo", "pull_request", "webhook_payload", "github_delivery_id", "log", "log_key"}, ",")
 }
 
-func (el EventLog) ColumnsWithoutID() string {
-	return strings.Join([]string{"created", "updated", "env_name", "repo", "pull_request", "webhook_payload", "github_delivery_id", "log", "log_key"}, ",")
-}
-
 func (el EventLog) ColumnsWithStatus() string {
 	return strings.Join([]string{"id", "created", "updated", "env_name", "repo", "pull_request", "webhook_payload", "github_delivery_id", "log", "log_key", "status"}, ",")
-}
-
-func (el EventLog) ColumnsWithoutIDWithStatus() string {
-	return strings.Join([]string{"created", "updated", "env_name", "repo", "pull_request", "webhook_payload", "github_delivery_id", "log", "log_key", "status"}, ",")
 }
 
 func (el EventLog) InsertColumns() string {
@@ -91,7 +82,6 @@ const (
 	PendingStatus
 	DoneStatus
 	FailedStatus
-	CancelledStatus
 )
 
 type EventStatusType int
@@ -146,21 +136,20 @@ type RenderedEventStatus struct {
 }
 
 type EventStatusSummaryConfig struct {
-	Type            EventStatusType          `json:"type"`
-	Status          EventStatus              `json:"status"`
-	RenderedStatus  RenderedEventStatus      `json:"rendered_status"`
-	FailedResources metahelm.ChartError      `json:"failed_resources"`
-	EnvName         string                   `json:"env_name"`
-	K8sNamespace    string                   `json:"k8s_ns"`
-	TriggeringRepo  string                   `json:"triggering_repo"`
-	PullRequest     uint                     `json:"pull_request"`
-	GitHubUser      string                   `json:"github_user"`
-	Branch          string                   `json:"branch"`
-	Revision        string                   `json:"revision"`
-	ProcessingTime  ConfigProcessingDuration `json:"processing_time"`
-	Started         time.Time                `json:"started"`
-	Completed       time.Time                `json:"completed"`
-	RefMap          map[string]string        `json:"ref_map"`
+	Type           EventStatusType          `json:"type"`
+	Status         EventStatus              `json:"status"`
+	RenderedStatus RenderedEventStatus      `json:"rendered_status"`
+	EnvName        string                   `json:"env_name"`
+	K8sNamespace   string                   `json:"k8s_ns"`
+	TriggeringRepo string                   `json:"triggering_repo"`
+	PullRequest    uint                     `json:"pull_request"`
+	GitHubUser     string                   `json:"github_user"`
+	Branch         string                   `json:"branch"`
+	Revision       string                   `json:"revision"`
+	ProcessingTime ConfigProcessingDuration `json:"processing_time"`
+	Started        time.Time                `json:"started"`
+	Completed      time.Time                `json:"completed"`
+	RefMap         map[string]string        `json:"ref_map"`
 }
 
 type EventStatusTreeNodeImage struct {

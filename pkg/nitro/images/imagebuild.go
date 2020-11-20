@@ -119,7 +119,7 @@ func (b *ImageBuilder) StartBuilds(ctx context.Context, envname string, rc *mode
 		eventlogger.GetLogger(ctx).SetImageCompleted(name, err != nil)
 
 		batch.outcomes.Lock()
-		batch.outcomes.completed[buildid(envname, name)] = nitroerrors.User(err)
+		batch.outcomes.completed[buildid(envname, name)] = nitroerrors.UserError(err)
 		batch.outcomes.Unlock()
 	}
 	cfs := []context.CancelFunc{}

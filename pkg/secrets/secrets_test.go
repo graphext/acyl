@@ -14,6 +14,7 @@ const (
 	testSecretPrefix    = "secret/qa/acyl/"
 )
 
+var testAWSCreds = &config.AWSCreds{}
 var testGithubConfig = &config.GithubConfig{}
 var testSlackConfig = &config.SlackConfig{}
 var testServerConfig = &config.ServerConfig{}
@@ -39,9 +40,12 @@ func TestSecretsPopulateAllSecrets(t *testing.T) {
 		t.Fatalf("error getting secrets client: %v", err)
 	}
 	psf := PVCSecretsFetcher{sc: sc}
-	err = psf.PopulateAllSecrets(testGithubConfig, testSlackConfig, testServerConfig, testPGConfig)
+	err = psf.PopulateAllSecrets(testAWSCreds, testGithubConfig, testSlackConfig, testServerConfig, testPGConfig)
 	if err != nil {
 		t.Fatalf("should have succeeded: %v", err)
+	}
+	if testAWSCreds.AccessKeyID != sm[testSecretPrefix+awsAccessKeyIDid] {
+		t.Fatalf("bad value for aws access key id: %v", testAWSCreds.AccessKeyID)
 	}
 	if testGithubConfig.HookSecret != sm[testSecretPrefix+githubHookSecretid] {
 		t.Fatalf("bad value for github hook secret: %v", testGithubConfig.HookSecret)

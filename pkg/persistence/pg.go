@@ -497,7 +497,7 @@ func (p *PGLayer) GetMostRecent(ctx context.Context, n uint) ([]QAEnvironment, e
 	if isCancelled(ctx) {
 		return nil, errors.Wrap(ctx.Err(), "error getting most recent")
 	}
-	q := `SELECT ` + models.QAEnvironment{}.Columns() + fmt.Sprintf(` from qa_environments WHERE created >= (current_timestamp - interval '%v days') ORDER BY created DESC;`, n)
+	q := `SELECT ` + models.QAEnvironment{}.Columns() + fmt.Sprintf(` from qa_environments WHERE created >= (current_timestamp - interval '%v days');`, n)
 	return p.collectRows(p.db.QueryContext(ctx, q))
 }
 

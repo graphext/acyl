@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/dollarshaveclub/acyl/pkg/models"
-	"github.com/dollarshaveclub/metahelm/pkg/metahelm"
 )
 
 // SetNewStatus creates a new empty event status of etype with only config.type, config.status and config.started set. This is intended to be called first and prior to config processing.
@@ -122,12 +121,5 @@ func (l *Logger) SetChartCompleted(name string, status models.NodeChartStatus) {
 func (l *Logger) SetCompletedStatus(status models.EventStatus) {
 	if err := l.DL.SetEventStatusCompleted(l.ID, status); err != nil {
 		l.Printf("error setting event status to completed: %v", err)
-	}
-}
-
-// SetFailedStatus marks the entire event as completed with a failed status. This is intended to be called once at the end of event processing.
-func (l *Logger) SetFailedStatus(ce metahelm.ChartError) {
-	if err := l.DL.SetEventStatusFailed(l.ID, ce); err != nil {
-		l.Printf("error setting event status to failed: %v", err)
 	}
 }

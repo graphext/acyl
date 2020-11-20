@@ -13,11 +13,10 @@ import (
 	"time"
 
 	"github.com/dollarshaveclub/acyl/pkg/eventlogger"
-	nitroerrors "github.com/dollarshaveclub/acyl/pkg/nitro/errors"
-
 	"github.com/dollarshaveclub/acyl/pkg/ghclient"
 	"github.com/dollarshaveclub/acyl/pkg/match"
 	"github.com/dollarshaveclub/acyl/pkg/models"
+	nitroerrors "github.com/dollarshaveclub/acyl/pkg/nitro/errors"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 	billy "gopkg.in/src-d/go-billy.v4"
@@ -55,13 +54,13 @@ func (g DataGetter) GetAcylYAML(ctx context.Context, rc *models.RepoConfig, repo
 	log(ctx, "fetching acyl.yml for %v@%v", repo, ref)
 	b, err := g.RC.GetFileContents(ctx, repo, "acyl.yml", ref)
 	if err != nil {
-		return fmt.Errorf("error getting acyl.yml: %w", err)
+		return errors.Wrap(err, "error getting acyl.yml")
 	}
 	if err := yaml.Unmarshal(b, &rc); err != nil {
-		return nitroerrors.User(fmt.Errorf("error unmarshaling acyl.yml: %w", err))
+		return errors.Wrap(err, "error unmarshaling acyl.yml")
 	}
 	if rc.Version < 2 {
-		return nitroerrors.User(ErrUnsupportedVersion)
+		return ErrUnsupportedVersion
 	}
 	rc.Application.SetValueDefaults()
 	rc.Application.Repo = repo
@@ -76,21 +75,21 @@ func (g DataGetter) getChartName(ctx context.Context, repo, ref, path string) (_
 		}
 	}()
 	if repo == "" || ref == "" || path == "" {
-		return "", nitroerrors.User(fmt.Errorf("one of repo (%v), ref (%v) or path (%v) is empty", repo, ref, path))
+		return "", fmt.Errorf("one of repo (%v), ref (%v) or path (%v) is empty", repo, ref, path)
 	}
 	log(ctx, "getting file contents: %v@%v: %v", repo, ref, path+"/Chart.yaml")
 	b, err := g.RC.GetFileContents(ctx, repo, path+"/Chart.yaml", ref)
 	if err != nil {
-		return "", fmt.Errorf("error getting Chart.yaml: %w", err)
+		return "", errors.Wrap(err, "error getting Chart.yaml")
 	}
 	cd := struct {
 		Name string `yaml:"name"`
 	}{}
 	if err := yaml.Unmarshal(b, &cd); err != nil {
-		return "", nitroerrors.User(fmt.Errorf("error unmarshaling Chart.yaml: %w", err))
+		return "", errors.Wrap(err, "error unmarshaling Chart.yaml")
 	}
 	if cd.Name == "" {
-		return "", nitroerrors.User(errors.New("chart name field is empty"))
+		return "", errors.New("chart name field is empty")
 	}
 	return cd.Name, nil
 }
@@ -104,7 +103,7 @@ func (g DataGetter) getDependencyChartName(ctx context.Context, d *models.RepoCo
 		log(ctx, "chart name for dependency: %v", cname)
 	}()
 	if d == nil {
-		return "", nitroerrors.User(errors.New("dependency is nil"))
+		return "", errors.New("dependency is nil")
 	}
 	var crepo, cref, cpath string
 	switch {
@@ -113,11 +112,11 @@ func (g DataGetter) getDependencyChartName(ctx context.Context, d *models.RepoCo
 	case d.AppMetadata.ChartRepoPath != "":
 		rp := &repoPath{}
 		if err := rp.parseFromString(d.AppMetadata.ChartRepoPath); err != nil {
-			return "", fmt.Errorf("error parsing ChartRepoPath for repo dependency: %v: %w", d.Repo, err)
+			return "", errors.Wrapf(err, "error parsing ChartRepoPath for repo dependency: %v", d.Repo)
 		}
 		crepo, cref, cpath = rp.repo, rp.ref, rp.path
 	default:
-		return "", nitroerrors.User(fmt.Errorf("repo dependency lacks ChartPath/ChartRepoPath: %v", d.Repo))
+		return "", fmt.Errorf("repo dependency lacks ChartPath/ChartRepoPath: %v", d.Repo)
 	}
 	return g.getChartName(ctx, crepo, cref, cpath)
 }
@@ -131,12 +130,12 @@ func (g DataGetter) getRefForRepoDependency(ctx context.Context, d *models.RepoC
 		log(ctx, "calculated ref for repo dependency: %v: %v (%v)", d.Repo, branch, sha)
 	}()
 	if d == nil || d.Repo == "" {
-		return "", "", nitroerrors.User(errors.New("empty Repo field"))
+		return "", "", errors.New("empty Repo field")
 	}
 	log(ctx, "fetching branches for %v", d.Repo)
 	branches, err := g.RC.GetBranches(ctx, d.Repo)
 	if err != nil {
-		return "", "", fmt.Errorf("error getting repo branches: %w", err)
+		return "", "", errors.Wrap(err, "error getting repo branches")
 	}
 	bi := make([]match.BranchInfo, len(branches))
 	for i := range branches {
@@ -154,7 +153,7 @@ func (g DataGetter) getRefForRepoDependency(ctx context.Context, d *models.RepoC
 	}
 	sha, branch, err = match.GetRefForRepo(ri, bi)
 	if err != nil {
-		return "", "", fmt.Errorf("error getting ref for repo: %w", err)
+		return "", "", errors.Wrap(err, "error getting ref for repo")
 	}
 	// get override if present, but only override the SHA
 	if override, ok := g.RepoRefOverrides[d.Repo]; ok {
@@ -212,18 +211,18 @@ func (g DataGetter) Get(ctx context.Context, rd models.RepoRevisionData) (*model
 		log(ctx, "processing dependency: %v (parent: %v, ancestor: %v)", d.Name, parent.Name, ancestor.Name)
 		select {
 		case <-ctx.Done():
-			return nitroerrors.Cancelled(errors.New("context was cancelled"))
+			return errors.New("context was cancelled")
 		default:
 			break
 		}
 		switch {
 		case d.Repo != "" && (d.ChartPath != "" || d.ChartRepoPath != ""):
-			return nitroerrors.User(fmt.Errorf("dependency error: %v: only one of Repo, ChartPath, or ChartRepoPath may be used", d.Name))
+			return fmt.Errorf("dependency error: %v: only one of Repo, ChartPath, or ChartRepoPath may be used", d.Name)
 		case d.ChartPath != "" && d.ChartRepoPath != "":
-			return nitroerrors.User(fmt.Errorf("dependency error: %v: either ChartPath or ChartRepoPath may be used, not both", d.Name))
+			return fmt.Errorf("dependency error: %v: either ChartPath or ChartRepoPath may be used, not both", d.Name)
 		case d.Repo != "":
 			if _, ok := repomap[d.Repo]; ok {
-				return nitroerrors.User(fmt.Errorf("duplicate repository dependency: %v (check for circular dependency declarations)", d.Repo))
+				return fmt.Errorf("duplicate repository dependency: %v (check for circular dependency declarations)", d.Repo)
 			}
 			repomap[d.Repo] = struct{}{}
 			bm := !ancestor.DisableBranchMatch
@@ -233,18 +232,18 @@ func (g DataGetter) Get(ctx context.Context, rd models.RepoRevisionData) (*model
 			}
 			dref, dbranch, err := g.getRefForRepoDependency(ctx, d, rd, defb, bm)
 			if err != nil {
-				return fmt.Errorf("error getting ref for repo dependency: %v: %w", d.Repo, err)
+				return errors.Wrapf(err, "error getting ref for repo dependency: %v", d.Repo)
 			}
 			drc := models.RepoConfig{}
 			if err := g.GetAcylYAML(ctx, &drc, d.Repo, dref); err != nil {
-				return fmt.Errorf("error processing %v acyl.yml: %w", d.Repo, err)
+				return errors.Wrapf(err, "error processing %v acyl.yml", d.Repo)
 			}
 			drc.Application.Branch = dbranch
 			d.AppMetadata = drc.Application
 			if d.Name == "" {
 				name, err := g.getDependencyChartName(ctx, d)
 				if err != nil {
-					return fmt.Errorf("error getting chart name for repo dependency: %v: %w", d.Repo, err)
+					return errors.Wrapf(err, "error getting chart name for repo dependency: %v", d.Repo)
 				}
 				d.Name = name
 			}
@@ -254,7 +253,7 @@ func (g DataGetter) Get(ctx context.Context, rd models.RepoRevisionData) (*model
 			for i := range drc.Dependencies.Direct {
 				dd := &drc.Dependencies.Direct[i]
 				if err := processDep(dd, d, ancestor); err != nil {
-					return fmt.Errorf("error processing direct dependency of %v: %v: %w", d.Name, dd.Name, err)
+					return errors.Wrapf(err, "error processing direct dependency of %v: %v", d.Name, dd.Name)
 				}
 				old, new := dd.Name, models.GetName(d.Repo)+"-"+dd.Name
 				dd.Name = new
@@ -270,13 +269,13 @@ func (g DataGetter) Get(ctx context.Context, rd models.RepoRevisionData) (*model
 
 		case d.ChartPath != "" || d.ChartRepoPath != "":
 			if d.DisableBranchMatch || d.DefaultBranch != "" {
-				return nitroerrors.User(fmt.Errorf("branch matching and default branch not available if ChartPath or ChartRepoPath is used: %v", d.Name))
+				return fmt.Errorf("branch matching and default branch not available if ChartPath or ChartRepoPath is used: %v", d.Name)
 			}
 			var drepo, dref, dbranch string
 			if d.ChartPath == "" {
 				rp := &repoPath{}
 				if err := rp.parseFromString(d.ChartRepoPath); err != nil {
-					return fmt.Errorf("dependency error: %v: malformed ChartRepoPath: %w", d.Name, err)
+					return errors.Wrapf(err, "dependency error: %v: malformed ChartRepoPath", d.Name)
 				}
 				drepo = rp.repo
 				dref = rp.ref
@@ -297,7 +296,7 @@ func (g DataGetter) Get(ctx context.Context, rd models.RepoRevisionData) (*model
 			if d.Name == "" {
 				name, err := g.getDependencyChartName(ctx, d)
 				if err != nil {
-					return fmt.Errorf("error getting chart name for dependency: %v: %w", d.AppMetadata.Repo, err)
+					return errors.Wrapf(err, "error getting chart name for dependency: %v", d.AppMetadata.Repo)
 				}
 				d.Name = name
 			}
@@ -309,7 +308,7 @@ func (g DataGetter) Get(ctx context.Context, rd models.RepoRevisionData) (*model
 	}
 	rc := models.RepoConfig{}
 	if err := g.GetAcylYAML(ctx, &rc, rd.Repo, rd.SourceSHA); err != nil {
-		return nil, fmt.Errorf("error processing target repo acyl.yml: %w", err)
+		return nil, errors.Wrap(err, "error processing target repo acyl.yml")
 	}
 	repomap[rd.Repo] = struct{}{}
 	rc.Application.Branch = rd.SourceBranch
@@ -317,7 +316,7 @@ func (g DataGetter) Get(ctx context.Context, rd models.RepoRevisionData) (*model
 	for i := range rc.Dependencies.Direct {
 		d := &rc.Dependencies.Direct[i]
 		if err := processDep(d, parent, d); err != nil {
-			return nil, fmt.Errorf("error processing direct dependencies: %w", err)
+			return nil, errors.Wrap(err, "error processing direct dependencies")
 		}
 	}
 	for _, td := range transitiveDeps {
@@ -328,7 +327,7 @@ func (g DataGetter) Get(ctx context.Context, rd models.RepoRevisionData) (*model
 	for i := range rc.Dependencies.Environment {
 		d := &rc.Dependencies.Environment[i]
 		if err := processDep(d, parent, d); err != nil {
-			return nil, fmt.Errorf("error processing environment dependencies: %w", err)
+			return nil, errors.Wrap(err, "error processing environment dependencies")
 		}
 	}
 	for _, td := range transitiveDeps {
@@ -336,7 +335,7 @@ func (g DataGetter) Get(ctx context.Context, rd models.RepoRevisionData) (*model
 	}
 
 	if ok, err := rc.Dependencies.ValidateNames(); !ok {
-		return nil, fmt.Errorf("error validating dependency names: %w", err)
+		return nil, errors.Wrap(err, "error validating dependency names")
 	}
 	return &rc, nil
 }
@@ -350,19 +349,19 @@ func (rp *repoPath) parseFromString(crp string) error {
 	// chart_repo_path: dollarshaveclub/helm-charts@master:path/to/chart
 	psl := strings.Split(crp, ":")
 	if len(psl) != 2 {
-		return nitroerrors.User(fmt.Errorf("malformed repo path: exactly one ':'' required: %v", crp))
+		return fmt.Errorf("malformed repo path: exactly one ':'' required: %v", crp)
 	}
 	rp.path = psl[1]
 	if strings.Contains(psl[0], "@") {
 		rsl := strings.Split(psl[0], "@")
 		if len(rsl) != 2 {
-			return nitroerrors.User(fmt.Errorf("malformed repo path: no more than one '@' may be present: %v", psl[0]))
+			return fmt.Errorf("malformed repo path: no more than one '@' may be present: %v", psl[0])
 		}
 		rp.ref = rsl[1]
 		psl[0] = rsl[0]
 	}
 	if len(strings.Split(psl[0], "/")) != 2 {
-		return nitroerrors.User(fmt.Errorf("malformed repo: exactly one '/' is required: %v", psl[0]))
+		return fmt.Errorf("malformed repo: exactly one '/' is required: %v", psl[0])
 	}
 	rp.repo = psl[0]
 	return nil
@@ -378,12 +377,12 @@ func getChartLocation(d models.RepoConfigDependency) (chartLocation, error) {
 	loc := chartLocation{}
 	if d.AppMetadata.ChartPath == "" {
 		if d.AppMetadata.ChartRepoPath == "" {
-			return loc, nitroerrors.User(errors.New("one of ChartPath or ChartRepoPath must be defined"))
+			return loc, errors.New("one of ChartPath or ChartRepoPath must be defined")
 		}
 		rp := &repoPath{}
 		err := rp.parseFromString(d.AppMetadata.ChartRepoPath)
 		if err != nil {
-			return loc, fmt.Errorf("error validating ChartRepoPath: %w", err)
+			return loc, errors.Wrap(err, "error validating ChartRepoPath")
 		}
 		loc.chart = *rp
 	} else {
@@ -400,7 +399,7 @@ func getChartLocation(d models.RepoConfigDependency) (chartLocation, error) {
 		rp := &repoPath{}
 		err := rp.parseFromString(d.AppMetadata.ChartVarsRepoPath)
 		if err != nil {
-			return loc, fmt.Errorf("error validating ChartVarsRepoPath: %w", err)
+			return loc, errors.Wrap(err, "error validating ChartVarsRepoPath")
 		}
 		loc.vars = *rp
 	}
@@ -431,36 +430,36 @@ func (g DataGetter) FetchCharts(ctx context.Context, rc *models.RepoConfig, base
 		out := &ChartLocation{ValueOverrides: make(map[string]string)}
 		cloc, err := getChartLocation(d)
 		if err != nil {
-			return nil, fmt.Errorf("error getting chart location: %w", err)
+			return nil, errors.Wrap(err, "error getting chart location")
 		}
 		cd := path.Join(basePath, strconv.Itoa(i), d.Name)
 		log(ctx, "getting directory contents: %v@%v: %v", cloc.chart.repo, cloc.chart.ref, cloc.chart.path)
 		dc, err := g.RC.GetDirectoryContents(ctx, cloc.chart.repo, cloc.chart.path, cloc.chart.ref)
 		if err != nil {
-			return nil, fmt.Errorf("error fetching chart contents: %w", err)
+			return nil, errors.Wrap(err, "error fetching chart contents")
 		}
 		for n, c := range dc {
 			n = strings.Replace(n, filepath.Clean(cloc.chart.path), "", -1) // remove chart path
 			fp := path.Join(cd, n)
 			if err = g.FS.MkdirAll(path.Dir(fp), os.ModePerm); err != nil {
-				return nil, fmt.Errorf("error creating directory: %w", err)
+				return nil, errors.Wrap(nitroerrors.SystemError(err), "error creating directory")
 			}
 			if c.Symlink {
 				if err := g.FS.Symlink(c.SymlinkTarget, fp); err != nil {
-					return nil, fmt.Errorf("error creating symlink: %w", err)
+					return nil, errors.Wrap(nitroerrors.SystemError(err), "error creating symlink")
 				}
 				continue
 			}
 			f, err := g.FS.Create(fp)
 			if err != nil {
-				return nil, fmt.Errorf("error creating file: %w", err)
+				return nil, errors.Wrap(nitroerrors.SystemError(err), "error creating file")
 			}
 			defer f.Close()
 			var n int
 			for {
 				i, err := f.Write(c.Contents[n:len(c.Contents)])
 				if err != nil {
-					return nil, fmt.Errorf("error writing to file: %w", err)
+					return nil, errors.Wrap(nitroerrors.SystemError(err), "error writing to file")
 				}
 				n += i
 				if n == len(c.Contents) {
@@ -473,20 +472,20 @@ func (g DataGetter) FetchCharts(ctx context.Context, rc *models.RepoConfig, base
 			log(ctx, "getting file contents: %v@%v: %v", cloc.vars.repo, cloc.vars.ref, cloc.vars.path)
 			fc, err := g.RC.GetFileContents(ctx, cloc.vars.repo, cloc.vars.path, cloc.vars.ref)
 			if err != nil {
-				return nil, fmt.Errorf("error getting vars file: %w", err)
+				return nil, errors.Wrap(err, "error getting vars file")
 			}
 			vcd := path.Join(cd, "vars.yml")
 			vf, err := g.FS.Create(vcd)
 			if err != nil {
-				return nil, fmt.Errorf("error creating vars file: %w", err)
+				return nil, errors.Wrap(nitroerrors.SystemError(err), "error creating vars file")
 			}
 			defer vf.Close()
 			n, err := vf.Write(fc)
 			if err != nil {
-				return nil, fmt.Errorf("error writing to vars file: %w", err)
+				return nil, errors.Wrap(nitroerrors.SystemError(err), "error writing to vars file")
 			}
 			if n < len(fc) {
-				return nil, io.ErrShortWrite
+				return nil, nitroerrors.SystemError(io.ErrShortWrite)
 			}
 			for _, v := range d.AppMetadata.ValueOverrides {
 				vsl := strings.SplitN(v, "=", 2)
@@ -502,7 +501,7 @@ func (g DataGetter) FetchCharts(ctx context.Context, rc *models.RepoConfig, base
 	name := models.GetName(rc.Application.Repo)
 	loc, err := fetchChartAndVars(0, models.RepoConfigDependency{Name: name, AppMetadata: rc.Application})
 	if err != nil || loc == nil {
-		return nil, fmt.Errorf("error getting primary repo chart: %w", err)
+		return nil, errors.Wrap(err, "error getting primary repo chart")
 	}
 	out := map[string]ChartLocation{name: *loc}
 	ctx, cf := context.WithTimeout(ctx, 2*time.Minute)
@@ -517,14 +516,14 @@ func (g DataGetter) FetchCharts(ctx context.Context, rc *models.RepoConfig, base
 		eg.Go(func() error {
 			loc, err = fetchChartAndVars(i+1, d)
 			if err != nil || loc == nil {
-				return fmt.Errorf("error getting dependency chart: %v: %w", d.Name, err)
+				return errors.Wrapf(err, "error getting dependency chart: %v", d.Name)
 			}
 			couts[i] = *loc
 			return nil
 		})
 	}
 	if err := eg.Wait(); err != nil {
-		return nil, fmt.Errorf("error fetching charts: %w", err)
+		return nil, errors.Wrap(err, "error fetching charts")
 	}
 	for i := 0; i < rc.Dependencies.Count(); i++ {
 		loc := couts[i]
@@ -532,7 +531,7 @@ func (g DataGetter) FetchCharts(ctx context.Context, rc *models.RepoConfig, base
 		for _, v := range d.ValueOverrides { // Dependency value_overrides override anything in the application metadata
 			vsl := strings.SplitN(v, "=", 2)
 			if len(vsl) != 2 {
-				return nil, nitroerrors.User(fmt.Errorf("malformed value override: %v", v))
+				return nil, fmt.Errorf("malformed value override: %v", v)
 			}
 			loc.ValueOverrides[vsl[0]] = vsl[1]
 		}

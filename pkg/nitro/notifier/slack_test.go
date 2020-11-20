@@ -39,7 +39,7 @@ func TestSlackRender(t *testing.T) {
 			},
 			verifyf: func(in *slack.PostMessageParameters, err error) error {
 				if err != nil {
-					return fmt.Errorf("should have succeeded: %w", err)
+					return errors.Wrap(err, "should have succeeded")
 				}
 				if in == nil {
 					return errors.New("result is nil")
@@ -75,7 +75,7 @@ func TestSlackRender(t *testing.T) {
 					return errors.New("should have failed")
 				}
 				if !strings.Contains(err.Error(), "error rendering template") {
-					return fmt.Errorf("unexpected error: %w", err)
+					return errors.Wrap(err, "unexpected error")
 				}
 				return nil
 			},

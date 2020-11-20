@@ -245,7 +245,7 @@ func configCheck(cmd *cobra.Command, args []string) {
 		perr("error fetching charts: %v", err)
 		return
 	}
-	ci, err := metahelm.NewChartInstallerWithoutK8sClient(nil, nil, osfs.New(""), &metrics.FakeCollector{}, nil, nil, nil, tillerConfig)
+	ci, err := metahelm.NewChartInstallerWithoutK8sClient(nil, nil, osfs.New(""), &metrics.FakeCollector{}, nil, nil, nil)
 	if err != nil {
 		perr("error creating chart installer: %v", err)
 		return
@@ -773,7 +773,7 @@ func displayInfoTerminal(rc *models.RepoConfig, err error, mg meta.Getter) int {
 			errorModal("Error Processing Charts", "Check your chart configuration.", err)
 			return
 		}
-		ci, err := metahelm.NewChartInstallerWithoutK8sClient(nil, nil, osfs.New(""), &metrics.FakeCollector{}, nil, nil, nil, tillerConfig)
+		ci, err := metahelm.NewChartInstallerWithoutK8sClient(nil, nil, osfs.New(""), &metrics.FakeCollector{}, nil, nil, nil)
 		if err != nil {
 			errorModal("Error Instantiating Chart Installer", "Bug!", err)
 			return

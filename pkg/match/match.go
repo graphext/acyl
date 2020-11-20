@@ -3,8 +3,6 @@ package match
 
 import (
 	"fmt"
-
-	nitroerrors "github.com/dollarshaveclub/acyl/pkg/nitro/errors"
 )
 
 // BranchInfo includes the information about a specific branch of a git repo
@@ -39,7 +37,7 @@ func GetRefForRepo(ri RepoInfo, branches []BranchInfo) (sha string, branch strin
 		}
 		v, ok := binfo[branch]
 		if !ok {
-			return "", "", nitroerrors.User(fmt.Errorf("branch matching is disabled but repo is missing a '%v' branch", branch))
+			return "", "", fmt.Errorf("branch matching is disabled but repo is missing a '%v' branch", branch)
 		}
 		return v, branch, nil
 	}
@@ -57,7 +55,7 @@ func GetRefForRepo(ri RepoInfo, branches []BranchInfo) (sha string, branch strin
 			fb = ri.BaseBranch
 			fl = "BaseBranch"
 		}
-		return "", "", nitroerrors.User(fmt.Errorf(`no suitable branch: neither "%v" (SourceBranch) nor "%v" (%v) found`, ri.SourceBranch, fb, fl))
+		return "", "", fmt.Errorf(`no suitable branch: neither "%v" (SourceBranch) nor "%v" (%v) found`, ri.SourceBranch, fb, fl)
 	}
 
 	// order determines precedence

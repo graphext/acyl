@@ -74,7 +74,6 @@ function updateBreadcrumb(cfg) {
 function updateConfig(cfg) {
     let sicon = document.getElementById("status-icon");
     let slinkbtnclass = "";
-
     switch (cfg.status) {
         case "pending":
             slinkbtnclass = "btn-primary";
@@ -88,9 +87,6 @@ function updateConfig(cfg) {
             slinkbtnclass = "btn-danger";
             sicon.innerHTML = "\uf071";
             break;
-        case "cancelled":
-            slinkbtnclass = "btn-outline-light";
-            sicon.innerHTML = "\uf05e";
         default:
             slinkbtnclass = "btn-warning";
             sicon.innerHTML = "";

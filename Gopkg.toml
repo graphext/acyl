@@ -27,11 +27,15 @@
 
 [[constraint]]
   branch = "master"
+  name = "github.com/aws/aws-sdk-go"
+
+[[constraint]]
+  branch = "master"
   name = "github.com/dollarshaveclub/furan"
 
 [[constraint]]
   name = "github.com/dollarshaveclub/metahelm"
-  version = "=0.6.2"
+  version = "=0.6.1"
 
 [[constraint]]
   name = "github.com/golang/mock"

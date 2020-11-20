@@ -31,7 +31,6 @@ app:
   k8s_secret_injections: "image-pull-secret=k8s/image_pull_secret"
   k8s_client_disable_http2: true # work around bug in using HTTP2 for k8s client calls
   operation_timeout_override: ''
-  tiller_image: ''
   ui:
     base_url: 'http://localhost:4000'
     enforce_oauth: false
@@ -45,7 +44,6 @@ app:
       favicon_url: ''
       title: ''
       title_style: ''
-      additional_doc_urls: {}
   failure_reports:
     s3:
       region: ''
@@ -71,10 +69,6 @@ service:
   type: ClusterIP
   internalPort: 4000
 ingress:
-  annotations:
-     kubernetes.io/ingress.class: foo
-  hosts:
-    - foo.bar 
   argo: true
   argo_host: foo.bar.com
   traefik:

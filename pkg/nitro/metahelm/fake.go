@@ -42,7 +42,7 @@ func getReleases(cl ChartLocations) metahelm.ReleaseMap {
 func (fi *FakeInstaller) BuildAndInstallCharts(ctx context.Context, newenv *EnvInfo, chartsLocation ChartLocations) error {
 	for k, v := range chartsLocation {
 		if err := fi.ChartInstallFunc(k, v); err != nil {
-			return fmt.Errorf("install aborted: %w", err)
+			return errors.Wrap(err, "install aborted")
 		}
 	}
 	if fi.DL != nil {
@@ -62,7 +62,7 @@ func (fi *FakeInstaller) BuildAndInstallCharts(ctx context.Context, newenv *EnvI
 func (fi FakeInstaller) BuildAndUpgradeCharts(ctx context.Context, env *EnvInfo, k8senv *models.KubernetesEnvironment, cl ChartLocations) error {
 	for k, v := range cl {
 		if err := fi.ChartUpgradeFunc(k, k8senv, v); err != nil {
-			return fmt.Errorf("upgrade aborted: %w", err)
+			return errors.Wrap(err, "upgrade aborted")
 		}
 	}
 	if fi.DL != nil {
@@ -75,7 +75,7 @@ func (fi FakeInstaller) BuildAndUpgradeCharts(ctx context.Context, env *EnvInfo,
 func (fi FakeInstaller) BuildAndInstallChartsIntoExisting(ctx context.Context, newenv *EnvInfo, k8senv *models.KubernetesEnvironment, cl ChartLocations) error {
 	for k, v := range cl {
 		if err := fi.ChartInstallFunc(k, v); err != nil {
-			return fmt.Errorf("install aborted: %w", err)
+			return errors.Wrap(err, "install aborted")
 		}
 	}
 	if fi.DL != nil {
@@ -154,14 +154,14 @@ func stubPodData(ns string) *v1.PodList {
 	pod.Namespace = ns
 	pod.Labels = map[string]string{"app": "foo-app"}
 	pod.Status.Phase = "Running"
-	pod.CreationTimestamp.Time = time.Now().UTC().Add(-3 * time.Hour).Add(-37 * time.Minute).Add(-33 * time.Second)
+	pod.CreationTimestamp.Time = time.Now().UTC().Add(-3*time.Hour).Add(-37 * time.Minute).Add(-33 * time.Second)
 
 	podContainerStatus.Name = "bar-app"
 	pod2 := v1.Pod{
 		Status: v1.PodStatus{
 			ContainerStatuses: []v1.ContainerStatus{podContainerStatus},
-			Phase:             "Running",
-			PodIP:             "10.0.0.2",
+			Phase: "Running",
+			PodIP: "10.0.0.2",
 		},
 		Spec: v1.PodSpec{
 			Containers: []v1.Container{
@@ -173,7 +173,7 @@ func stubPodData(ns string) *v1.PodList {
 	pod2.Name = "bar-app-abc123"
 	pod2.Namespace = ns
 	pod2.Labels = map[string]string{"app": "bar-app"}
-	pod2.CreationTimestamp.Time = time.Now().UTC().Add(-3 * time.Hour).Add(-37 * time.Minute).Add(-33 * time.Second)
+	pod2.CreationTimestamp.Time = time.Now().UTC().Add(-3*time.Hour).Add(-37 * time.Minute).Add(-33 * time.Second)
 
 	return &v1.PodList{
 		Items: []v1.Pod{
@@ -208,7 +208,7 @@ func (fkr FakeKubernetesReporter) GetPodLogs(ctx context.Context, ns, podname, c
 	rc := ioutil.NopCloser(strings.NewReader(""))
 	body, err := getFakePodLogs(fkr.FakePodLogFilePath, lines)
 	if err != nil {
-		return rc, fmt.Errorf("error getting logs: %w", err)
+		return rc, errors.Wrap(err, "error getting logs")
 	}
 	lineCount := bytes.Count(body, []byte{'\n'})
 	if uint(lineCount) > lines {
@@ -224,7 +224,7 @@ func getFakePodLogs(path string, lines uint) ([]byte, error) {
 	var requestedLogs []byte
 	podlogs, err := ioutil.ReadFile(path)
 	if err != nil {
-		return []byte{}, fmt.Errorf("error reading pod log test data file: %w", err)
+		return []byte{}, errors.Wrapf(err,"error reading pod log test data file")
 	}
 	// return number of log lines equal to request to mimic corev1.PodLogOptions{ TailLines }
 	br := bytes.NewReader(podlogs)
@@ -234,7 +234,7 @@ func getFakePodLogs(path string, lines uint) ([]byte, error) {
 		bucket = append(bucket, scanner.Text())
 	}
 	if err := scanner.Err(); err != nil {
-		return []byte{}, fmt.Errorf("error scanning log lines: %w", err)
+		return []byte{}, errors.Wrapf(err, "error scanning log lines")
 	}
 	// create random value to vary logs returned for testing
 	rand.Seed(time.Now().UnixNano())
@@ -249,10 +249,10 @@ func getFakePodLogs(path string, lines uint) ([]byte, error) {
 		count++
 	}
 	// convert log string slice to byte slice
-	for i := 0; i < len(logs); i++ {
-		b := []byte(logs[i] + "\n")
-		for j := 0; j < len(b); j++ {
-			requestedLogs = append(requestedLogs, b[j])
+	for i:=0; i<len(logs); i++{
+		b := []byte(logs[i]+"\n")
+		for j:=0; j<len(b); j++{
+			requestedLogs = append(requestedLogs,b[j])
 		}
 	}
 	return requestedLogs, nil

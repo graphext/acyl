@@ -1,10 +1,10 @@
 package metrics
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/DataDog/datadog-go/statsd"
+	"github.com/pkg/errors"
 )
 
 // Collector describes an object that collects metrics
@@ -25,7 +25,7 @@ var _ Collector = &DatadogCollector{}
 func NewDatadogCollector(namespace, addr string, tags []string) (*DatadogCollector, error) {
 	c, err := statsd.New(addr)
 	if err != nil {
-		return nil, fmt.Errorf("error creating statsd client: %w", err)
+		return nil, errors.Wrap(err, "error creating statsd client")
 	}
 	c.Namespace = namespace
 	c.Tags = tags
