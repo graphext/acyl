@@ -1,0 +1,706 @@
+###############################################################################
+# References
+# https://github.com/bootprint/bootprint-openapi
+# https://github.com/OAI/OpenAPI-Specification/blob/master/versions/2.0.md
+#
+###############################################################################
+# Manual Update Swagger Doc, Build HTML & CSS
+# 1) Update this swagger.yml document file
+# 2) run `$ bootprint openapi doc/swagger/swagger.yml ui/swagger/`
+#
+swagger: "2.0"
+info:
+  title: Acyl
+  description: The Acyl API provides authenticated users an array of options to create and manage dynamic environments.
+  contact:
+    name: Benjamen Keroack
+    email: benjamen@dollarshaveclub.com
+  license:
+    name: MIT
+    url: "https://opensource.org/licenses/MIT"
+  version: v0.7.6
+tags:
+  - name: backward_compatible
+    description: "API backward_compatible endpoints; original Amino features"
+  - name: v0
+    description: "API v0 endpoints; duplicates and expand backward_compatible endpoints"
+  - name: v1
+    description: "API v1 endpoints; adds recent endpoint option"
+  - name: v2
+    description: "API v2 endpoints; adds Nitro features"
+schemes:
+  - https
+produces:
+  - "application/json"
+paths:
+  ### API Default###
+  /envs:
+    get:
+      tags:
+        - backward_compatible
+      summary: "**DEPRECATED** no longer supported, please use `/envs/_search` get list of environments, names only or full details, duplicates `/envs/` endpoint"
+      operationId: getEnvs
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: full_details
+          in: query
+          description: returns full list of details as defined by `QAEnvironment (v0)`
+          required: false
+          type: string
+      responses:
+        200:
+          description: returns list of string environment names, or detailed list of objects if `full_details` is true
+          schema:
+            $ref: '#/definitions/Envs_v0'
+        500:
+          description: internal server error
+  /envs/_search:
+    get:
+      tags:
+        - backward_compatible
+      summary: search environments from optional parameters, at least one parameter is required
+      operationId: getEnvsSearch
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: pr
+          in: query
+          description: pull request number, required if `repo` parameter included
+          required: false
+          type: integer
+        - name: repo
+          in: query
+          description: repository name
+          required: false
+          type: string
+        - name: status
+          in: query
+          description: enviornment status
+          required: false
+          type: string
+        - name: source_branch
+          in: query
+          description: branch name
+          required: false
+          type: string
+        - name: source_sha
+          in: query
+          description: branch sha
+          required: false
+          type: string
+        - name: user
+          in: query
+          description: github user
+          required: false
+          type: string
+      responses:
+        200:
+          description: returns list of detailed environments as defined by `QAEnvironment (v0)`
+          schema:
+            $ref: '#/definitions/Envs_v0'
+        400:
+          description: bad request
+        500:
+          description: internal server error
+  /envs/{name}:
+    get:
+      tags:
+        - backward_compatible
+      summary: get enviornment details
+      operationId: getEnvsName
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        200:
+          description: returns detailed environment as defined by `QAEnvironment (v0)`
+          schema:
+            $ref: '#/definitions/QAEnvironment_v0'
+        404:
+          description: not found
+        500:
+          description: internal server error
+    delete:
+      tags:
+        - backward_compatible
+      summary: delete environment
+      operationId: deleteEnvsName
+      produces:
+        - "no content"
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        204:
+          description: no content
+        404:
+          description: not found
+        500:
+          description: internal server error
+  /envs/{name}/success:
+    post:
+      tags:
+        - backward_compatible
+      summary: "**DEPRECATED** original Lambda-based DQA implementation, no longer supported; create environment success"
+      operationId: postEnvsNameSuccess
+      produces:
+        - "no content"
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        204:
+          description: no content
+  /envs/{name}/failure:
+    post:
+      tags:
+        - backward_compatible
+      summary: "**DEPRECATED** original Lambda-based DQA implementation, no longer supported; create environment failure"
+      operationId: postEnvsNameFailure
+      produces:
+        - "no content"
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        204:
+          description: no content
+  /envs/{name}/event:
+    post:
+      tags:
+        - backward_compatible
+      summary: "**DEPRECATED** original Lambda-based DQA implementation, no longer supported; create environment event"
+      operationId: postEnvsNameEvent
+      produces:
+        - "no content"
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        204:
+          description: no content
+  ### API v0 ###
+  /v0/envs:
+    get:
+      tags:
+        - v0
+      summary: "**DEPRECATED** no longer supported, please use `/v0/envs/_search`; get list of environments, names only or full details, duplicates `/v0/envs/` endpoint"
+      operationId: getV0Envs
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: full_details
+          in: query
+          description: returns full list of details as defined by `QAEnvironment (v0)`
+          required: false
+          type: string
+      responses:
+        200:
+          description: returns list of string environment names, or full detailed list of objects if `full_details` is true
+          schema:
+            $ref: '#/definitions/Envs_v0'
+        500:
+          description: internal server error
+  /v0/envs/_search:
+    get:
+      tags:
+        - v0
+      summary: search environments from optional parameters, at least one parameter is required
+      operationId: getV0EnvsSearch
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: pr
+          in: query
+          description: pull request number, required if `repo` parameter included
+          required: false
+          type: integer
+        - name: repo
+          in: query
+          description: repository name
+          required: false
+          type: string
+        - name: status
+          in: query
+          description: enviornment status
+          required: false
+          type: string
+        - name: source_branch
+          in: query
+          description: branch name
+          required: false
+          type: string
+        - name: source_sha
+          in: query
+          description: branch sha
+          required: false
+          type: string
+        - name: user
+          in: query
+          description: github user
+          required: false
+          type: string
+      responses:
+        200:
+          description: returns list of detailed environments as defined by `QAEnvironment (v0)`
+          schema:
+            $ref: '#/definitions/Envs_v0'
+        400:
+          description: bad request
+        500:
+          description: internal server error
+  /v0/envs/{name}:
+    get:
+      tags:
+        - v0
+      summary: get enviornment details
+      operationId: getV0EnvsName
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        200:
+          description: returns detailed environment as defined by `QAEnvironment (v0)`
+          schema:
+            $ref: '#/definitions/v0QAEnvironment'
+        404:
+          description: not found
+        500:
+          description: internal server error
+    delete:
+      tags:
+        - v0
+      summary: delete environment
+      operationId: deleteV0EnvsName
+      produces:
+        - "no content"
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        204:
+          description: no content
+        404:
+          description: not found
+        500:
+          description: internal server error
+  /v0/envs/{name}/success:
+    post:
+      tags:
+        - v0
+      summary: "**DEPRECATED** original Lambda-based DQA implementation, no longer supported; create environment success"
+      operationId: postV0EnvsNameSuccess
+      produces:
+        - "no content"
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        204:
+          description: no content
+  /v0/envs/{name}/failure:
+    post:
+      tags:
+        - v0
+      summary: "**DEPRECATED** original Lambda-based DQA implementation, no longer supported; create environment failure"
+      operationId: postV0EnvsNameFailure
+      produces:
+        - "no content"
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        204:
+          description: no content
+  /v0/envs/{name}/event:
+    post:
+      tags:
+        - v0
+      summary: "**DEPRECATED** original Lambda-based DQA implementation, no longer supported; create environment event"
+      operationId: postV0EnvsNameEvent
+      produces:
+        - "no content"
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        204:
+          description: no content
+  ### API v1 ###
+  /v1/envs/_search:
+    get:
+      tags:
+        - v1
+      summary: search environments from optional parameters, at least one parameter is required
+      operationId: getv1EnvsSearch
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: pr
+          in: query
+          description: pull request number, required if `repo` parameter included
+          required: false
+          type: integer
+        - name: repo
+          in: query
+          description: repository name
+          required: false
+          type: string
+        - name: status
+          in: query
+          description: enviornment status
+          required: false
+          type: string
+        - name: source_branch
+          in: query
+          description: branch name
+          required: false
+          type: string
+        - name: source_sha
+          in: query
+          description: branch sha
+          required: false
+          type: string
+        - name: user
+          in: query
+          description: github user
+          required: false
+          type: string
+      responses:
+        200:
+          description: returns list of detailed environments as defined by `QAEnvironment (v1)`
+          schema:
+            $ref: '#/definitions/Envs_v0'
+        400:
+          description: bad request
+        500:
+          description: internal server error
+  /v1/envs/_recent:
+    get:
+      tags:
+        - v1
+      summary: return all environments within n days
+      operationId: getV1EnvsRecent
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: days
+          in: query
+          description: number of days (default `1`)
+          required: false
+          type: string
+      responses:
+        200:
+          description: returns list of detailed environments as defined by `QAEnvironment (v1)`
+          schema:
+            $ref: '#/definitions/Envs_v0'
+        400:
+          description: bad request
+        500:
+          description: internal server error
+  /v1/envs/{name}:
+    get:
+      tags:
+        - v1
+      summary: get enviornment details
+      operationId: getV1EnvsName
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        200:
+          description: returns detailed environment as defined by `QAEnvironment (v1)`
+          schema:
+            $ref: '#/definitions/QAEnvironment_v1'
+        404:
+          description: not found
+        500:
+          description: internal server error
+  ### API v2 ###
+  /v2/envs/_search:
+    get:
+      tags:
+        - v2
+      summary: search environments from optional parameters, at least one parameter is required
+      operationId: getv2EnvsSearch
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: pr
+          in: query
+          description: pull request number, required if `repo` parameter included
+          required: false
+          type: integer
+        - name: repo
+          in: query
+          description: repository name
+          required: false
+          type: string
+        - name: status
+          in: query
+          description: enviornment status
+          required: false
+          type: string
+        - name: source_branch
+          in: query
+          description: branch name
+          required: false
+          type: string
+        - name: source_sha
+          in: query
+          description: branch sha
+          required: false
+          type: string
+        - name: user
+          in: query
+          description: github user
+          required: false
+          type: string
+      responses:
+        200:
+          description: returns list of detailed environments as defined by `QAEnvironment (v2)`
+          schema:
+            $ref: '#/definitions/Envs_v2'
+        400:
+          description: bad request
+        500:
+          description: internal server error
+  /v2/envs/{name}:
+    get:
+      tags:
+        - v2
+      summary: get enviornment details
+      operationId: getV2EnvsName
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: name
+          in: path
+          description: environment name (e.g. `foo-bar-baz`)
+          required: true
+          type: string
+      responses:
+        200:
+          description: returns detailed environment as defined by `QAEnvironment (v2)`
+          schema:
+            $ref: '#/definitions/QAEnvironment_v2'
+        404:
+          description: not found
+        500:
+          description: internal server error
+  /v2/eventlog/{id}:
+    get:
+      tags:
+        - v2
+      summary: get event logs by id
+      operationId: getV2EventlogId
+      parameters:
+        - $ref: '#/securityDefinitions/api_key'
+          required: true
+        - name: id
+          in: path
+          description: event log id
+          required: true
+          type: string
+      responses:
+        200:
+          description: returns event logs for requested id
+          schema:
+            $ref: '#/definitions/EventLog'
+        400:
+          description: bad request
+        404:
+          description: not found
+        500:
+          description: internal server error
+definitions:
+  QAEnvironmentEvent:
+    description: A representation of QAEnvironmentEvent object
+    type: object
+    properties:
+      timestamp:
+        type: string
+        format: date-time
+      message:
+        type: string
+  RefMap:
+    description: A representation of RefMap object; map of repo to git reference
+    type: object
+    properties:
+      string:
+        type: string
+  AminoServiceToPort:
+    description: "**DEPRECATED** not supported with Nitro v2 or newer; A representation of AminoServiceToPort object"
+    type: object
+    properties:
+      string:
+        type: integer
+        format: int64
+  QAEnvironment_v0:
+    description: A representation of a v0 environment
+    type: object
+    properties:
+      name:
+        type: string
+      created:
+        type: string
+        format: date-time
+      raw_events:
+        type: array
+        format: string
+      events:
+        $ref: "#/definitions/QAEnvironmentEvent"
+      hostname:
+        type: string
+      qa_type:
+        type: string
+      user:
+        type: string
+      repo:
+        type: string
+      pull_request:
+        type: integer
+      source_sha:
+        type: string
+      base_sha:
+        type: string
+      source_branch:
+        type: string
+      base_branch:
+        type: string
+      raw_status:
+        type: string
+      status:
+        type: integer
+      ref_map:
+        $ref: "#/definitions/RefMap"
+      amino_service_to_port:
+        type: object
+        description: "**DEPRECATED** not supported with Nitro v2 or newer"
+      amino_kubernetes_namespace:
+        type: string
+        description: "**DEPRECATED** not supported with Nitro v2 or newer"
+      amino_environment_id:
+        type: integer
+        description: "**DEPRECATED** not supported with Nitro v2 or newer"
+  QAEnvironment_v1:
+    allOf:
+      - $ref: '#/definitions/QAEnvironment_v0'
+      - description: A representation of a v1 environment
+        properties:
+          commit_sha_map:
+            $ref: "#/definitions/RefMap"
+  QAEnvironment_v2:
+    allOf:
+      - $ref: '#/definitions/QAEnvironment_v1'
+      - description: A representation of a v2 environment
+        properties:
+          source_ref:
+            type: string
+  Envs_v0:
+    description: A representation of an array of API v0 environment objects
+    type: array
+    items:
+      $ref: '#/definitions/QAEnvironment_v0'
+  Envs_v1:
+    description: A representation of an array of API v1 environment objects
+    type: array
+    items:
+      $ref: '#/definitions/QAEnvironment_v1'
+  Envs_v2:
+    description: A representation of an array of API v2 environment objects
+    type: array
+    items:
+      $ref: '#/definitions/QAEnvironment_v2'
+  EventLog:
+    description: A representation of an event log response
+    type: object
+    properties:
+      id:
+        type: string
+      created:
+        type: string
+        format: date-time
+      updated:
+        type: string
+        format: date-time
+      env_name:
+        type: string
+      repo:
+        type: string
+      pull_request:
+        type: integer
+      webhook_payload:
+        type: byte
+      log:
+        type: string
+securityDefinitions:
+  api_key:
+    type: apiKey
+    name: API-Key
+    in: header
+    description: API key or aborts with Unauthorized
+  github_auth:
+    type: oauth2
+    authorizationUrl: "https://github.com/oauth/login"
+    flow: implicit
+    scopes:
+      read: read repository
+      write: modify repository
+      admin: administrate repository

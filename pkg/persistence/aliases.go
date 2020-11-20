@@ -17,6 +17,3 @@ type QAEnvironmentEvent = models.QAEnvironmentEvent
 
 type ServerConfig = config.ServerConfig
 type MetricsCollector = metrics.Collector
-
-type AWSCreds = config.AWSCreds
-type AWSConfig = config.AWSConfig

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-pg/pg/orm"
+	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/lib/pq/hstore"
 	"github.com/pkg/errors"
@@ -29,6 +30,7 @@ const (
 	Failure                                // Failure means there was an error during provisioning or application startup
 	Destroyed                              // Destroyed means the environment was destroyed explicitly or as part of a PR synchronize or close
 	Updating                               // Updating means an existing env is being updated (replaced behind the scenes)
+	Cancelled                              // Cancelled means an environment has been cancelled via a context.
 )
 
 // EnvironmentStatusFromString returns the EnvironmentStatus constant for a string or error if unknown
@@ -45,6 +47,8 @@ func EnvironmentStatusFromString(es string) (EnvironmentStatus, error) {
 		return Destroyed, nil
 	case "updating":
 		return Updating, nil
+	case "cancelled":
+		return Cancelled, nil
 	default:
 		return UnknownStatus, fmt.Errorf("unknown status")
 	}
@@ -105,6 +109,7 @@ type QAEnvironment struct {
 	AminoServiceToPortRaw    map[string]string    `json:"-"`
 	AminoKubernetesNamespace string               `json:"amino_kubernetes_namespace"`
 	AminoEnvironmentID       int                  `json:"amino_environment_id"`
+	EventIDs                 []uuid.UUID          `json:"event_ids"`
 
 	rmapHS  hstore.Hstore
 	csmapHS hstore.Hstore

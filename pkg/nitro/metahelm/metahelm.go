@@ -77,7 +77,7 @@ type K8sClientFactoryFunc func(kubecfgpath, kubectx string) (*kubernetes.Clients
 
 // Defaults for Tiller configuration options, if not specified otherwise
 const (
-	DefaultTillerImage                   = "gcr.io/kubernetes-helm/tiller:v2.16.7"
+	DefaultTillerImage                   = "helmpack/tiller:v2.17.0"
 	DefaultTillerPort                    = 44134
 	DefaultTillerDeploymentName          = "tiller-deploy"
 	DefaultTillerServerConnectRetryDelay = 10 * time.Second
@@ -137,7 +137,7 @@ var _ Installer = &ChartInstaller{}
 func NewChartInstaller(ib images.Builder, dl persistence.DataLayer, fs billy.Filesystem, mc metrics.Collector, k8sGroupBindings map[string]string, k8sRepoWhitelist []string, k8sSecretInjs map[string]config.K8sSecret, tcfg TillerConfig, k8sJWTPath string, enableK8sTracing bool) (*ChartInstaller, error) {
 	kc, rcfg, err := NewInClusterK8sClientset(k8sJWTPath, enableK8sTracing)
 	if err != nil {
-		return nil, errors.Wrap(err, "error getting k8s client")
+		return nil, fmt.Errorf("error getting k8s client: %w", err)
 	}
 	return &ChartInstaller{
 		ib:               ib,
@@ -155,10 +155,11 @@ func NewChartInstaller(ib images.Builder, dl persistence.DataLayer, fs billy.Fil
 }
 
 // NewChartInstallerWithoutK8sClient returns a ChartInstaller without a k8s client, for use in testing/CLI.
-func NewChartInstallerWithoutK8sClient(ib images.Builder, dl persistence.DataLayer, fs billy.Filesystem, mc metrics.Collector, k8sGroupBindings map[string]string, k8sRepoWhitelist []string, k8sSecretInjs map[string]config.K8sSecret) (*ChartInstaller, error) {
+func NewChartInstallerWithoutK8sClient(ib images.Builder, dl persistence.DataLayer, fs billy.Filesystem, mc metrics.Collector, k8sGroupBindings map[string]string, k8sRepoWhitelist []string, k8sSecretInjs map[string]config.K8sSecret, tcfg TillerConfig) (*ChartInstaller, error) {
 	return &ChartInstaller{
 		ib:               ib,
 		hcf:              NewInClusterHelmClient,
+		tcfg:             tcfg.SetDefaults(),
 		dl:               dl,
 		fs:               fs,
 		mc:               mc,
@@ -172,7 +173,7 @@ func NewChartInstallerWithoutK8sClient(ib images.Builder, dl persistence.DataLay
 func NewChartInstallerWithClientsetFromContext(ib images.Builder, dl persistence.DataLayer, fs billy.Filesystem, mc metrics.Collector, k8sGroupBindings map[string]string, k8sRepoWhitelist []string, k8sSecretInjs map[string]config.K8sSecret, tcfg TillerConfig, kubeconfigpath, kubectx string) (*ChartInstaller, error) {
 	kc, rcfg, err := NewKubecfgContextK8sClientset(kubeconfigpath, kubectx)
 	if err != nil {
-		return nil, errors.Wrap(err, "error getting k8s client")
+		return nil, fmt.Errorf("error getting k8s client: %w", err)
 	}
 	return &ChartInstaller{
 		ib:               ib,
@@ -205,11 +206,11 @@ func NewKubecfgContextK8sClientset(kubecfgpath, kubectx string) (*kubernetes.Cli
 	kcfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
 	rcfg, err := kcfg.ClientConfig()
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "error getting rest config")
+		return nil, nil, fmt.Errorf("error getting rest config: %w", err)
 	}
 	kc, err := kubernetes.NewForConfig(rcfg)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "error getting k8s clientset")
+		return nil, nil, fmt.Errorf("error getting k8s clientset: %w", err)
 	}
 	return kc, rcfg, nil
 }
@@ -217,13 +218,13 @@ func NewKubecfgContextK8sClientset(kubecfgpath, kubectx string) (*kubernetes.Cli
 func NewInClusterK8sClientset(k8sJWTPath string, enableK8sTracing bool) (*kubernetes.Clientset, *rest.Config, error) {
 	kcfg, err := rest.InClusterConfig()
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "error getting k8s in-cluster config")
+		return nil, nil, fmt.Errorf("error getting k8s in-cluster config: %w", err)
 	}
 
 	kcfg.WrapTransport = wrapTransport(k8sJWTPath, enableK8sTracing)
 	kc, err := kubernetes.NewForConfig(kcfg)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "error getting k8s clientset")
+		return nil, nil, fmt.Errorf("error getting k8s clientset: %w", err)
 	}
 	return kc, kcfg, nil
 }
@@ -252,7 +253,7 @@ func NewInClusterHelmClient(_, tillerAddr string, _ *rest.Config, _ kubernetes.I
 func NewTunneledHelmClient(tillerNS, _ string, rcfg *rest.Config, kc kubernetes.Interface) (helm.Interface, error) {
 	tunnel, err := portforwarder.New(tillerNS, kc, rcfg)
 	if err != nil {
-		return nil, errors.Wrap(err, "error establishing k8s tunnel")
+		return nil, fmt.Errorf("error establishing k8s tunnel: %w", err)
 	}
 	tillerHost := fmt.Sprintf("127.0.0.1:%d", tunnel.Local)
 
@@ -274,10 +275,10 @@ func (cl *ChartLocation) MergeVars(fs billy.Filesystem, overrides map[string]str
 	if cl.VarFilePath != "" {
 		d, err := readFileSafely(fs, cl.VarFilePath)
 		if err != nil {
-			return nil, errors.Wrap(nitroerrors.SystemError(err), "error reading vars file")
+			return nil, fmt.Errorf("error reading vars file: %w", err)
 		}
 		if err := yaml.Unmarshal(d, &base); err != nil {
-			return nil, errors.Wrap(nitroerrors.UserError(err), "error parsing vars file")
+			return nil, fmt.Errorf("error parsing vars file: %w", nitroerrors.User(err))
 		}
 		if base == nil {
 			base = map[string]interface{}{}
@@ -285,7 +286,7 @@ func (cl *ChartLocation) MergeVars(fs billy.Filesystem, overrides map[string]str
 	}
 	for k, v := range overrides {
 		if err := strvals.ParseInto(fmt.Sprintf("%v=%v", k, v), base); err != nil {
-			return nil, errors.Wrapf(nitroerrors.UserError(err), "error parsing override: %v=%v", k, v)
+			return nil, fmt.Errorf("error parsing override: %v=%v: %w", k, v, nitroerrors.User(err))
 		}
 	}
 	return yaml.Marshal(base)
@@ -305,14 +306,11 @@ func (ci ChartInstaller) BuildAndInstallChartsIntoExisting(ctx context.Context, 
 func (ci ChartInstaller) installOrUpgradeIntoExisting(ctx context.Context, env *EnvInfo, k8senv *models.KubernetesEnvironment, cl ChartLocations, upgrade bool) (err error) {
 	span, ctx := tracer.StartSpanFromContext(ctx, "chart_installer.install_or_upgrade")
 	if ci.kc == nil {
-		return nitroerrors.SystemError(errors.New("k8s client is nil"))
+		return errors.New("k8s client is nil")
 	}
 	ci.dl.SetQAEnvironmentStatus(tracer.ContextWithSpan(context.Background(), span), env.Env.Name, models.Updating)
 	defer func() {
 		if err != nil {
-			if !nitroerrors.IsUserError(err) {
-				err = nitroerrors.SystemError(err)
-			}
 			// clean up namespace on error
 			err2 := ci.cleanUpNamespace(ctx, k8senv.Namespace, env.Env.Name, ci.isRepoPrivileged(env.Env.Repo))
 			if err2 != nil {
@@ -327,11 +325,11 @@ func (ci ChartInstaller) installOrUpgradeIntoExisting(ctx context.Context, env *
 	}()
 	csl, err := ci.GenerateCharts(ctx, k8senv.Namespace, env, cl)
 	if err != nil {
-		return errors.Wrap(err, "error generating metahelm charts")
+		return fmt.Errorf("error generating metahelm charts: %w", err)
 	}
 	b, err := ci.ib.StartBuilds(ctx, env.Env.Name, env.RC)
 	if err != nil {
-		return errors.Wrap(err, "error starting image builds")
+		return fmt.Errorf("error starting image builds: %w", err)
 	}
 	defer b.Stop()
 	if k8senv == nil {
@@ -348,22 +346,19 @@ var overrideNamespace string
 // BuildAndInstallCharts builds images for the environment while simultaneously installing the associated helm charts, returning the k8s namespace or error
 func (ci ChartInstaller) BuildAndInstallCharts(ctx context.Context, newenv *EnvInfo, cl ChartLocations) (err error) {
 	if ci.kc == nil {
-		return nitroerrors.SystemError(errors.New("k8s client is nil"))
+		return errors.New("k8s client is nil")
 	}
 	var ns string
 	if overrideNamespace == "" {
 		ns, err = ci.createNamespace(ctx, newenv.Env.Name)
 		if err != nil {
-			return errors.Wrap(nitroerrors.SystemError(err), "error creating namespace")
+			return fmt.Errorf("error creating namespace: %w", err)
 		}
 	} else {
 		ns = overrideNamespace
 	}
 	defer func() {
 		if err != nil {
-			if !nitroerrors.IsUserError(err) {
-				err = nitroerrors.SystemError(err)
-			}
 			// clean up namespace on error
 			err2 := ci.cleanUpNamespace(ctx, ns, newenv.Env.Name, ci.isRepoPrivileged(newenv.Env.Repo))
 			if err2 != nil {
@@ -375,27 +370,27 @@ func (ci ChartInstaller) BuildAndInstallCharts(ctx context.Context, newenv *EnvI
 		}
 	}()
 	if err := ci.writeK8sEnvironment(ctx, newenv, ns); err != nil {
-		return errors.Wrap(err, "error writing k8s environment")
+		return fmt.Errorf("error writing k8s environment: %w", err)
 	}
 
 	csl, err := ci.GenerateCharts(ctx, ns, newenv, cl)
 	if err != nil {
-		return errors.Wrap(err, "error generating metahelm charts")
+		return fmt.Errorf("error generating metahelm charts: %w", err)
 	}
 	b, err := ci.ib.StartBuilds(ctx, newenv.Env.Name, newenv.RC)
 	if err != nil {
-		return errors.Wrap(err, "error starting image builds")
+		return fmt.Errorf("error starting image builds: %w", err)
 	}
 	defer b.Stop()
 
 	endNamespaceSetup := ci.mc.Timing(mpfx+"namespace_setup", "triggering_repo:"+newenv.RC.Application.Repo)
 
 	if err = ci.setupNamespace(ctx, newenv.Env.Name, newenv.Env.Repo, ns); err != nil {
-		return errors.Wrap(nitroerrors.SystemError(err), "error setting up namespace")
+		return fmt.Errorf("error setting up namespace: %w", err)
 	}
 	taddr, err := ci.installTiller(ctx, newenv.Env.Name, ns)
 	if err != nil {
-		return errors.Wrap(nitroerrors.SystemError(err), "error installing tiller")
+		return fmt.Errorf("error installing tiller: %w", err)
 	}
 
 	endNamespaceSetup()
@@ -437,11 +432,11 @@ func (ci ChartInstaller) installOrUpgradeCharts(ctx context.Context, taddr, name
 	// update tiller addr
 	taddr, err := ci.updateTillerAddr(ctx, namespace, env.Env.Name)
 	if err != nil {
-		return errors.Wrap(err, "error updating tiller addr")
+		return fmt.Errorf("error updating tiller addr: %w", err)
 	}
 	hc, err := ci.hcf(namespace, taddr, ci.rcfg, ci.kc)
 	if err != nil {
-		return errors.Wrap(err, "error getting helm client")
+		return fmt.Errorf("error getting helm client: %w", err)
 	}
 	mhm := &metahelm.Manager{
 		HC:  hc,
@@ -480,14 +475,14 @@ func (ci ChartInstaller) install(ctx context.Context, mhm *metahelm.Manager, cb 
 		if _, ok := err.(metahelm.ChartError); ok {
 			return err
 		}
-		return errors.Wrap(nitroerrors.UserError(err), "error installing metahelm charts")
+		return fmt.Errorf("error installing metahelm charts: %w", nitroerrors.User(err))
 	}
 	ci.dl.AddEvent(ctx, env.Env.Name, fmt.Sprintf("all charts installed; release names: %v", relmap))
 	if err := ci.writeReleaseNames(ctx, relmap, namespace, env); err != nil {
-		return errors.Wrap(nitroerrors.SystemError(err), "error writing release names")
+		return fmt.Errorf("error writing release names: %w", err)
 	}
 	if err := ci.dl.UpdateK8sEnvTillerAddr(ctx, env.Env.Name, taddr); err != nil {
-		return errors.Wrap(nitroerrors.SystemError(err), "error updating k8s environment with tiller address")
+		return fmt.Errorf("error updating k8s environment with tiller address: %w", err)
 	}
 	return nil
 }
@@ -501,44 +496,39 @@ func (ci ChartInstaller) upgrade(ctx context.Context, mhm *metahelm.Manager, cb 
 		if _, ok := err.(metahelm.ChartError); ok {
 			return err
 		}
-		return errors.Wrap(nitroerrors.UserError(err), "error upgrading metahelm charts")
+		return fmt.Errorf("error upgrading metahelm charts: %w", err)
 	}
 	ci.dl.AddEvent(ctx, env.Env.Name, fmt.Sprintf("all charts upgraded; release names: %v", env.Releases))
 	if err := ci.updateReleaseRevisions(ctx, env); err != nil {
-		return errors.Wrap(nitroerrors.SystemError(err), "error updating release revisions")
+		return fmt.Errorf("error updating release revisions: %w", err)
 	}
 	return nil
 }
 
 func (ci ChartInstaller) writeK8sEnvironment(ctx context.Context, env *EnvInfo, ns string) (err error) {
-	defer func() {
-		if err != nil {
-			err = nitroerrors.SystemError(err)
-		}
-	}()
 	k8senv, err := ci.dl.GetK8sEnv(ctx, env.Env.Name)
 	if err != nil {
-		return errors.Wrap(err, "error checking if k8s env exists")
+		return fmt.Errorf("error checking if k8s env exists: %w", err)
 	}
 	if k8senv != nil {
 		if err := ci.cleanUpNamespace(ctx, k8senv.Namespace, k8senv.EnvName, k8senv.Privileged); err != nil {
 			ci.log(ctx, "error cleaning up namespace for existing k8senv: %v", err)
 		}
 		if err := ci.dl.DeleteK8sEnv(ctx, env.Env.Name); err != nil {
-			return errors.Wrap(err, "error deleting old k8s env")
+			return fmt.Errorf("error deleting old k8s env: %w", err)
 		}
 	}
 	rcy, err := yaml.Marshal(env.RC)
 	if err != nil {
-		return errors.Wrap(err, "error marshaling RepoConfig YAML")
+		return fmt.Errorf("error marshaling RepoConfig YAML: %w", err)
 	}
 	rm, err := env.RC.RefMap()
 	if err != nil {
-		return errors.Wrap(err, "error generating refmap from repoconfig")
+		return fmt.Errorf("error generating refmap from repoconfig: %w", err)
 	}
 	rmj, err := json.Marshal(rm)
 	if err != nil {
-		return errors.Wrap(err, "error marshaling RefMap JSON")
+		return fmt.Errorf("error marshaling RefMap JSON: %w", err)
 	}
 	sig := env.RC.ConfigSignature()
 	kenv := &models.KubernetesEnvironment{
@@ -569,7 +559,7 @@ func (ci ChartInstaller) updateReleaseRevisions(ctx context.Context, env *EnvInf
 func (ci ChartInstaller) writeReleaseNames(ctx context.Context, rm metahelm.ReleaseMap, ns string, newenv *EnvInfo) error {
 	n, err := ci.dl.DeleteHelmReleasesForEnv(ctx, newenv.Env.Name)
 	if err != nil {
-		return errors.Wrap(err, "error deleting existing helm releases")
+		return fmt.Errorf("error deleting existing helm releases: %w", err)
 	}
 	if n > 0 {
 		ci.log(ctx, "deleted %v old helm releases", n)
@@ -596,11 +586,6 @@ func (ci ChartInstaller) writeReleaseNames(ctx context.Context, rm metahelm.Rele
 // GenerateCharts processes the fetched charts, adds and merges overrides and returns metahelm Charts ready to be installed/upgraded
 func (ci ChartInstaller) GenerateCharts(ctx context.Context, ns string, newenv *EnvInfo, cloc ChartLocations) (out []metahelm.Chart, err error) {
 	defer ci.mc.Timing(mpfx+"generate_metahelm_charts", "triggering_repo:"+newenv.Env.Repo)()
-	defer func() {
-		if err != nil && !nitroerrors.IsSystemError(err) {
-			err = nitroerrors.UserError(err)
-		}
-	}()
 	genchart := func(i int, rcd models.RepoConfigDependency) (_ metahelm.Chart, err error) {
 		defer func() {
 			label := "triggering repo"
@@ -652,10 +637,10 @@ func (ci ChartInstaller) GenerateCharts(ctx context.Context, ns string, newenv *
 		}
 		vo, err := loc.MergeVars(ci.fs, overrides)
 		if err != nil {
-			return out, errors.Wrapf(err, "error merging chart overrides: %v", rcd.Name)
+			return out, fmt.Errorf("error merging chart overrides: %v: %w", rcd.Name, err)
 		}
 		if err := yaml.Unmarshal(vo, &map[string]interface{}{}); err != nil {
-			return out, errors.Wrapf(err, "error in generated YAML overrides for %v", rcd.Name)
+			return out, fmt.Errorf("error in generated YAML overrides for %v: %w", rcd.Name, err)
 		}
 		out.Title = rcd.Name
 		out.Location = loc.ChartPath
@@ -672,7 +657,7 @@ func (ci ChartInstaller) GenerateCharts(ctx context.Context, ns string, newenv *
 		reqlist = append(reqlist, d.Requires...)
 		dc, err := genchart(i+1, d)
 		if err != nil {
-			return out, errors.Wrapf(err, "error generating chart: %v", d.Name)
+			return out, fmt.Errorf("error generating chart: %v: %w", d.Name, err)
 		}
 		out = append(out, dc)
 		prc.Requires = append(prc.Requires, d.Name)
@@ -684,7 +669,7 @@ func (ci ChartInstaller) GenerateCharts(ctx context.Context, ns string, newenv *
 	}
 	pc, err := genchart(0, prc)
 	if err != nil {
-		return out, errors.Wrap(err, "error generating primary application chart")
+		return out, fmt.Errorf("error generating primary application chart: %w", err)
 	}
 	out = append(out, pc)
 	return out, nil
@@ -699,7 +684,7 @@ const (
 func (ci ChartInstaller) createNamespace(ctx context.Context, envname string) (string, error) {
 	id, err := rand.Int(rand.Reader, big.NewInt(99999))
 	if err != nil {
-		return "", errors.Wrap(err, "error getting random integer")
+		return "", fmt.Errorf("error getting random integer: %w", err)
 	}
 	nsn := truncateToDNS1123Label(fmt.Sprintf("nitro-%d-%s", id, envname))
 	if err := ci.dl.AddEvent(ctx, envname, "creating namespace: "+nsn); err != nil {
@@ -715,7 +700,7 @@ func (ci ChartInstaller) createNamespace(ctx context.Context, envname string) (s
 	ns.Name = nsn
 	ci.log(ctx, "creating namespace: %v", nsn)
 	if _, err := ci.kc.CoreV1().Namespaces().Create(&ns); err != nil {
-		return "", errors.Wrap(err, "error creating namespace")
+		return "", fmt.Errorf("error creating namespace: %w", err)
 	}
 	return nsn, nil
 }
@@ -766,7 +751,7 @@ func (ci ChartInstaller) setupNamespace(ctx context.Context, envname, repo, ns s
 	// create service account for Tiller
 	ci.log(ctx, "creating service account for tiller: %v", serviceAccount)
 	if _, err := ci.kc.CoreV1().ServiceAccounts(ns).Create(&corev1.ServiceAccount{ObjectMeta: meta.ObjectMeta{Name: serviceAccount}}); err != nil {
-		return errors.Wrap(err, "error creating service acount")
+		return fmt.Errorf("error creating service acount: %w", err)
 	}
 	roleName := "nitro"
 	// create a role for the service account
@@ -784,7 +769,7 @@ func (ci ChartInstaller) setupNamespace(ctx context.Context, envname, repo, ns s
 			},
 		},
 	}); err != nil {
-		return errors.Wrap(err, "error creating service account role")
+		return fmt.Errorf("error creating service account role: %w", err)
 	}
 	// bind the service account to the role
 	ci.log(ctx, "binding service account to role")
@@ -804,7 +789,7 @@ func (ci ChartInstaller) setupNamespace(ctx context.Context, envname, repo, ns s
 			Name:     roleName,
 		},
 	}); err != nil {
-		return errors.Wrap(err, "error creating service account cluster role binding")
+		return fmt.Errorf("error creating service account cluster role binding: %w", err)
 	}
 	// if the repo is privileged, bind the service account to the cluster-admin ClusterRole
 	if ci.isRepoPrivileged(repo) {
@@ -829,7 +814,7 @@ func (ci ChartInstaller) setupNamespace(ctx context.Context, envname, repo, ns s
 				Name:     "cluster-admin",
 			},
 		}); err != nil {
-			return errors.Wrap(err, "error creating cluster role binding (privileged repo)")
+			return fmt.Errorf("error creating cluster role binding (privileged repo): %w", err)
 		}
 	}
 	// create optional user group role bindings
@@ -852,7 +837,7 @@ func (ci ChartInstaller) setupNamespace(ctx context.Context, envname, repo, ns s
 				Name:     crole,
 			},
 		}); err != nil {
-			return errors.Wrap(err, "error creating group role binding")
+			return fmt.Errorf("error creating group role binding: %w", err)
 		}
 	}
 	// create optional secrets
@@ -866,7 +851,7 @@ func (ci ChartInstaller) setupNamespace(ctx context.Context, envname, repo, ns s
 			Data: value.Data,
 			Type: corev1.SecretType(value.Type),
 		}); err != nil {
-			return errors.Wrapf(err, "error creating secret: %v", name)
+			return fmt.Errorf("error creating secret: %v: %w", name, err)
 		}
 	}
 	return nil
@@ -888,7 +873,7 @@ func (ci ChartInstaller) installTiller(ctx context.Context, envname, ns string) 
 		AutoMountServiceAccountToken: true,
 	}
 	if err := installer.Install(ci.kc, &instops); err != nil {
-		return "", errors.Wrap(err, "error installing Tiller")
+		return "", fmt.Errorf("error installing Tiller: %w", err)
 	}
 	select {
 	case <-ctx.Done():
@@ -914,7 +899,7 @@ func (ci ChartInstaller) installTiller(ctx context.Context, envname, ns string) 
 				ci.log(ctx, "Tiller deployment in namespace %s not found; retrying", ns)
 				goto retry
 			}
-			return "", errors.Wrapf(err, "error getting Tiller deployment")
+			return "", fmt.Errorf("error getting Tiller deployment: %w", err)
 		}
 		if deployment.Status.AvailableReplicas == deployment.Status.Replicas {
 			pods, err = ci.getTillerPods(ns)
@@ -930,7 +915,7 @@ func (ci ChartInstaller) installTiller(ctx context.Context, envname, ns string) 
 			// use the Helm client to ping tiller to verify it's up and ready
 			hc, err := ci.hcf(ns, addr, ci.rcfg, ci.kc)
 			if err != nil {
-				return "", errors.Wrap(err, "error getting helm client to check tiller")
+				return "", fmt.Errorf("error getting helm client to check tiller: %w", err)
 			}
 			if err := hc.PingTiller(); err != nil {
 				ci.log(ctx, "error pinging tiller: %v; retrying", err)
@@ -940,7 +925,7 @@ func (ci ChartInstaller) installTiller(ctx context.Context, envname, ns string) 
 		}
 		doRetry, err = ci.checkTillerPods(ns)
 		if !doRetry {
-			return "", errors.Wrap(err, "aborting tiller install")
+			return "", fmt.Errorf("aborting tiller install: %w", err)
 		}
 		ci.log(ctx, "not all Tiller replicas are available (err: %v); retrying", err)
 	retry:
@@ -959,14 +944,14 @@ func (ci ChartInstaller) installTiller(ctx context.Context, envname, ns string) 
 func (ci ChartInstaller) updateTillerAddr(ctx context.Context, ns, envname string) (string, error) {
 	pods, err := ci.getTillerPods(ns)
 	if err != nil {
-		return "", errors.Wrap(err, "error getting tiller pods")
+		return "", fmt.Errorf("error getting tiller pods: %w", err)
 	}
 	if i := len(pods.Items); i != 1 {
 		return "", fmt.Errorf("unexpected number of tiller pods (wanted 1): %v", i)
 	}
 	addr := fmt.Sprintf("%v:%v", pods.Items[0].Status.PodIP, ci.tcfg.Port)
 	if err := ci.dl.UpdateK8sEnvTillerAddr(ctx, envname, addr); err != nil {
-		return "", errors.Wrap(err, "error updating tiller addr in db")
+		return "", fmt.Errorf("error updating tiller addr in db: %w", err)
 	}
 	return addr, nil
 }
@@ -974,7 +959,7 @@ func (ci ChartInstaller) updateTillerAddr(ctx context.Context, ns, envname strin
 func (ci ChartInstaller) checkTillerPods(ns string) (bool, error) {
 	pods, err := ci.getTillerPods(ns)
 	if err != nil {
-		return true, errors.Wrap(err, "error getting pods for tiller deployment; retrying")
+		return true, fmt.Errorf("error getting pods for tiller deployment; retrying: %w", err)
 	}
 	if len(pods.Items) != 1 {
 		return true, fmt.Errorf("unexpected pod count: %v (wanted 1); retrying", len(pods.Items))
@@ -998,13 +983,13 @@ func (ci ChartInstaller) checkTillerPods(ns string) (bool, error) {
 func (ci ChartInstaller) getTillerPods(ns string) (*corev1.PodList, error) {
 	requirement, err := labels.NewRequirement("app", selection.Equals, []string{"helm"})
 	if err != nil {
-		return nil, errors.Wrap(err, "error getting requirement")
+		return nil, fmt.Errorf("error getting requirement: %w", err)
 	}
 	pods, err := ci.kc.CoreV1().Pods(ns).List(meta.ListOptions{
 		LabelSelector: labels.Everything().Add(*requirement).String(),
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "error getting pod list")
+		return nil, fmt.Errorf("error getting pod list: %w", err)
 	}
 	return pods, nil
 }
@@ -1018,7 +1003,7 @@ func (ci ChartInstaller) cleanUpNamespace(ctx context.Context, ns, envname strin
 	if err := ci.kc.CoreV1().Namespaces().Delete(ns, &meta.DeleteOptions{GracePeriodSeconds: &zero, PropagationPolicy: &bg}); err != nil {
 		// If the namespace is not found, we do not need to return the error as there is nothing to delete
 		if !k8serrors.IsNotFound(err) {
-			return errors.Wrap(err, "error deleting namespace")
+			return fmt.Errorf("error deleting namespace: %w", err)
 		}
 	}
 	if privileged {
@@ -1037,7 +1022,7 @@ func (ci ChartInstaller) DeleteNamespace(ctx context.Context, k8senv *models.Kub
 		return nil
 	}
 	if err := ci.cleanUpNamespace(ctx, k8senv.Namespace, k8senv.EnvName, k8senv.Privileged); err != nil {
-		return errors.Wrap(err, "error cleaning up namespace")
+		return fmt.Errorf("error cleaning up namespace: %w", err)
 	}
 	return ci.dl.DeleteK8sEnv(ctx, k8senv.EnvName)
 }
@@ -1060,7 +1045,7 @@ func (ci ChartInstaller) removeOrphanedNamespaces(ctx context.Context, maxAge ti
 	}
 	nsl, err := ci.kc.CoreV1().Namespaces().List(meta.ListOptions{LabelSelector: objLabelKey + "=" + objLabelValue})
 	if err != nil {
-		return errors.Wrap(err, "error listing namespaces")
+		return fmt.Errorf("error listing namespaces: %w", err)
 	}
 	ci.log(ctx, "cleanup: found %v nitro namespaces", len(nsl.Items))
 	expires := meta.NewTime(time.Now().UTC().Add(-maxAge))
@@ -1068,14 +1053,14 @@ func (ci ChartInstaller) removeOrphanedNamespaces(ctx context.Context, maxAge ti
 		if ns.ObjectMeta.CreationTimestamp.Before(&expires) {
 			envs, err := ci.dl.GetK8sEnvsByNamespace(ctx, ns.Name)
 			if err != nil {
-				return errors.Wrapf(err, "error querying k8senvs by namespace: %v", ns.Name)
+				return fmt.Errorf("error querying k8senvs by namespace: %v: %w", ns.Name, err)
 			}
 			if len(envs) == 0 {
 				ci.log(ctx, "deleting orphaned namespace: %v", ns.Name)
 				bg := meta.DeletePropagationBackground
 				var zero int64
 				if err := ci.kc.CoreV1().Namespaces().Delete(ns.Name, &meta.DeleteOptions{GracePeriodSeconds: &zero, PropagationPolicy: &bg}); err != nil {
-					return errors.Wrap(err, "error deleting namespace")
+					return fmt.Errorf("error deleting namespace: %w", err)
 				}
 			}
 		}
@@ -1090,7 +1075,7 @@ func (ci ChartInstaller) removeOrphanedCRBs(ctx context.Context, maxAge time.Dur
 	}
 	crbl, err := ci.kc.RbacV1().ClusterRoleBindings().List(meta.ListOptions{LabelSelector: objLabelKey + "=" + objLabelValue})
 	if err != nil {
-		return errors.Wrap(err, "error listing ClusterRoleBindings")
+		return fmt.Errorf("error listing ClusterRoleBindings: %w", err)
 	}
 	ci.log(ctx, "cleanup: found %v nitro ClusterRoleBindings", len(crbl.Items))
 	expires := meta.NewTime(time.Now().UTC().Add(-maxAge))
@@ -1099,14 +1084,14 @@ func (ci ChartInstaller) removeOrphanedCRBs(ctx context.Context, maxAge time.Dur
 			envname := envNameFromClusterRoleBindingName(crb.ObjectMeta.Name)
 			env, err := ci.dl.GetQAEnvironment(ctx, envname)
 			if err != nil {
-				return errors.Wrapf(err, "error getting environment for ClusterRoleBinding: %v", envname)
+				return fmt.Errorf("error getting environment for ClusterRoleBinding: %v: %w", envname, err)
 			}
 			if env == nil || env.Status == models.Failure || env.Status == models.Destroyed {
 				ci.log(ctx, "deleting orphaned ClusterRoleBinding: %v", crb.ObjectMeta.Name)
 				bg := meta.DeletePropagationBackground
 				var zero int64
 				if err := ci.kc.RbacV1().ClusterRoleBindings().Delete(crb.ObjectMeta.Name, &meta.DeleteOptions{GracePeriodSeconds: &zero, PropagationPolicy: &bg}); err != nil {
-					return errors.Wrap(err, "error deleting ClusterRoleBinding")
+					return fmt.Errorf("error deleting ClusterRoleBinding: %w", err)
 				}
 			}
 		}
@@ -1125,7 +1110,7 @@ type K8sPod struct {
 func (ci ChartInstaller) GetPodList(ctx context.Context, ns string) (out []K8sPod, err error) {
 	pl, err := ci.kc.CoreV1().Pods(ns).List(meta.ListOptions{})
 	if err != nil {
-		return []K8sPod{}, errors.Wrapf(err, "error unable to retrieve pods for namespace %v", ns)
+		return []K8sPod{}, fmt.Errorf("error unable to retrieve pods for namespace %v: %w", ns, err)
 	}
 	if len(pl.Items) == 0 {
 		// return blank K8sPod struct if no pods found
@@ -1160,7 +1145,7 @@ type K8sPodContainers struct {
 func (ci ChartInstaller) GetPodContainers(ctx context.Context, ns, podname string) (out K8sPodContainers, err error) {
 	pod, err := ci.kc.CoreV1().Pods(ns).Get(podname, meta.GetOptions{})
 	if err != nil {
-		return K8sPodContainers{}, errors.Wrapf(err, "error unable to retrieve pods for namespace %v", ns)
+		return K8sPodContainers{}, fmt.Errorf("error unable to retrieve pods for namespace %v: %w", ns, err)
 	}
 	if pod == nil {
 		return K8sPodContainers{}, nil
@@ -1194,7 +1179,7 @@ func (ci ChartInstaller) GetPodLogs(ctx context.Context, ns, podname, container 
 	req.BackOff(nil)
 	plRC, err := req.Stream()
 	if err != nil {
-		return nil, errors.Wrap(err, "error getting request stream")
+		return nil, fmt.Errorf("error getting request stream: %w", err)
 	}
 	return plRC, nil
 }

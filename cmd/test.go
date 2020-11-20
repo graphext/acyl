@@ -390,10 +390,9 @@ func testConfigSetup(dl persistence.DataLayer) (*nitroenv.Manager, context.Conte
 	if testEnvCfg.privileged {
 		testEnvCfg.k8sCfg.PrivilegedRepoWhitelist = []string{ri.GitHubRepoName}
 	}
-	tcfg := metahelm.TillerConfig{
-		ServerConnectRetries:    10,
-		ServerConnectRetryDelay: 2 * time.Second,
-	}
+	tcfg := tillerConfig
+	tcfg.ServerConnectRetries = 10
+	tcfg.ServerConnectRetryDelay = 2 * time.Second
 	ci, err := metahelm.NewChartInstallerWithClientsetFromContext(ib, dl, fs, mc, testEnvCfg.k8sCfg.GroupBindings, testEnvCfg.k8sCfg.PrivilegedRepoWhitelist, testEnvCfg.k8sCfg.SecretInjections, tcfg, testEnvCfg.kubeCfgPath, testEnvCfg.kubeCtx)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error getting chart installer")

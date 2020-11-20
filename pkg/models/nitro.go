@@ -9,6 +9,7 @@ import (
 
 	"github.com/lib/pq"
 
+	nitroerrors "github.com/dollarshaveclub/acyl/pkg/nitro/errors"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/sha3"
 )
@@ -192,15 +193,15 @@ func (dd DependencyDeclaration) ValidateNames() (bool, error) {
 	checkNames := func(label string, deps []RepoConfigDependency) (bool, error) {
 		for i, d := range deps {
 			if d.Name == "" {
-				return false, fmt.Errorf("empty name at offset %v in %v dependencies", i, label)
+				return false, nitroerrors.User(fmt.Errorf("empty name at offset %v in %v dependencies", i, label))
 			}
 			if _, ok := nm[d.Name]; ok {
-				return false, fmt.Errorf("duplicate name at offset %v in %v dependencies", i, label)
+				return false, nitroerrors.User(fmt.Errorf("duplicate name at offset %v in %v dependencies", i, label))
 			}
 			nm[d.Name] = struct{}{}
 			if d.BranchMatchable() {
 				if _, ok := rm[d.Repo]; ok {
-					return false, fmt.Errorf("duplicate repo dependency at offset %v in %v dependencies: %v", i, label, d.Repo)
+					return false, nitroerrors.User(fmt.Errorf("duplicate repo dependency at offset %v in %v dependencies: %v", i, label, d.Repo))
 				}
 				rm[d.Repo] = struct{}{}
 			}
@@ -208,7 +209,7 @@ func (dd DependencyDeclaration) ValidateNames() (bool, error) {
 		for _, d := range deps {
 			for j, r := range d.Requires {
 				if _, ok := nm[r]; !ok {
-					return false, fmt.Errorf("unknown requirement of %v dependency '%v' at offset %v: %v", label, d.Name, j, r)
+					return false, nitroerrors.User(fmt.Errorf("unknown requirement of %v dependency '%v' at offset %v: %v", label, d.Name, j, r))
 				}
 			}
 		}

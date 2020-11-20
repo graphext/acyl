@@ -12,11 +12,12 @@ func _() {
 	_ = x[PendingStatus-1]
 	_ = x[DoneStatus-2]
 	_ = x[FailedStatus-3]
+	_ = x[CancelledStatus-4]
 }
 
-const _EventStatus_name = "UnknownEventStatusPendingStatusDoneStatusFailedStatus"
+const _EventStatus_name = "UnknownEventStatusPendingStatusDoneStatusFailedStatusCancelledStatus"
 
-var _EventStatus_index = [...]uint8{0, 18, 31, 41, 53}
+var _EventStatus_index = [...]uint8{0, 18, 31, 41, 53, 68}
 
 func (i EventStatus) String() string {
 	if i < 0 || i >= EventStatus(len(_EventStatus_index)-1) {

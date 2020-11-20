@@ -10,3 +10,6 @@ generate:
 
 check:
 	./check.sh
+
+swagger:
+	./swagger.sh

@@ -16,26 +16,29 @@ import (
 
 // FailedPod models a single failed pod with metadata and logs
 type FailedPod struct {
-	Name, Phase, Message, Reason string
-	Conditions                   []corev1.PodCondition
-	ContainerStatuses            []corev1.ContainerStatus
+	Name              string                   `json:"name"`
+	Phase             string                   `json:"phase"`
+	Message           string                   `json:"message"`
+	Reason            string                   `json:"reason"`
+	Conditions        []corev1.PodCondition    `json:"conditions"`
+	ContainerStatuses []corev1.ContainerStatus `json:"container_statuses"`
 	// Logs is a map of container name to raw log (stdout/stderr) output
-	Logs map[string][]byte
+	Logs map[string][]byte `json:"logs"`
 }
 
 // ChartError is a chart install/upgrade error due to failing Kubernetes resources. It contains all Deployment, Job or DaemonSet-related pods that appear to
 // be in a failed state, including up to MaxPodLogLines of log data for each.
 type ChartError struct {
 	// HelmError is the original error returned by Helm
-	HelmError error
+	HelmError error `json:"helm_error"`
 	// Level is the chart level (zero-indexed) at which the error occurred
-	Level uint
+	Level uint `json:"level"`
 	// FailedDaemonSets is map of DaemonSet name to failed pods
-	FailedDaemonSets map[string][]FailedPod
+	FailedDaemonSets map[string][]FailedPod `json:"failed_daemon_sets"`
 	// FailedDeployments is map of Deployment name to failed pods
-	FailedDeployments map[string][]FailedPod
+	FailedDeployments map[string][]FailedPod `json:"failed_deployments"`
 	// FailedJobs is map of Job name to failed pods
-	FailedJobs map[string][]FailedPod
+	FailedJobs map[string][]FailedPod `json:"failed_jobs"`
 }
 
 // NewChartError returns an initialized empty ChartError

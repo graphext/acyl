@@ -14,11 +14,12 @@ func _() {
 	_ = x[Failure-3]
 	_ = x[Destroyed-4]
 	_ = x[Updating-5]
+	_ = x[Cancelled-6]
 }
 
-const _EnvironmentStatus_name = "UnknownStatusSpawnedSuccessFailureDestroyedUpdating"
+const _EnvironmentStatus_name = "UnknownStatusSpawnedSuccessFailureDestroyedUpdatingCancelled"
 
-var _EnvironmentStatus_index = [...]uint8{0, 13, 20, 27, 34, 43, 51}
+var _EnvironmentStatus_index = [...]uint8{0, 13, 20, 27, 34, 43, 51, 60}
 
 func (i EnvironmentStatus) String() string {
 	if i < 0 || i >= EnvironmentStatus(len(_EnvironmentStatus_index)-1) {

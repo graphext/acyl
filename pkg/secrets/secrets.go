@@ -14,8 +14,6 @@ import (
 // Secret IDs
 // These will be interpolated as .ID in the secrets mapping
 const (
-	awsAccessKeyIDid           = "aws/access_key_id"
-	awsSecretAccessKeyid       = "aws/secret_access_key"
 	githubHookSecretid         = "github/hook_secret"
 	githubTokenid              = "github/token"
 	githubAppID                = "github/app/id"
@@ -35,9 +33,8 @@ const (
 )
 
 type SecretFetcher interface {
-	PopulateAllSecrets(aws *config.AWSCreds, gh *config.GithubConfig, slack *config.SlackConfig, srv *config.ServerConfig, pg *config.PGConfig)
+	PopulateAllSecrets(gh *config.GithubConfig, slack *config.SlackConfig, srv *config.ServerConfig, pg *config.PGConfig)
 	PopulatePG(pg *config.PGConfig) error
-	PopulateAWS(aws *config.AWSCreds) error
 	PopulateGithub(gh *config.GithubConfig) error
 	PopulateSlack(slack *config.SlackConfig) error
 	PopulateServer(srv *config.ServerConfig) error
@@ -54,10 +51,7 @@ func NewPVCSecretsFetcher(sc *pvc.SecretsClient) *PVCSecretsFetcher {
 }
 
 // PopulateAllSecrets populates all secrets into the respective config structs
-func (psf *PVCSecretsFetcher) PopulateAllSecrets(aws *config.AWSCreds, gh *config.GithubConfig, slack *config.SlackConfig, srv *config.ServerConfig, pg *config.PGConfig) error {
-	if err := psf.PopulateAWS(aws); err != nil {
-		return errors.Wrap(err, "error getting AWS secrets")
-	}
+func (psf *PVCSecretsFetcher) PopulateAllSecrets(gh *config.GithubConfig, slack *config.SlackConfig, srv *config.ServerConfig, pg *config.PGConfig) error {
 	if err := psf.PopulateGithub(gh); err != nil {
 		return errors.Wrap(err, "error getting GitHub secrets")
 	}
@@ -80,21 +74,6 @@ func (psf *PVCSecretsFetcher) PopulatePG(pg *config.PGConfig) error {
 		return errors.Wrap(err, "error getting DB URI")
 	}
 	pg.PostgresURI = string(s)
-	return nil
-}
-
-// PopulateAWS populates AWS secrets into aws
-func (psf *PVCSecretsFetcher) PopulateAWS(aws *config.AWSCreds) error {
-	s, err := psf.sc.Get(awsAccessKeyIDid)
-	if err != nil {
-		return errors.Wrap(err, "error getting AWS access key ID")
-	}
-	aws.AccessKeyID = string(s)
-	s, err = psf.sc.Get(awsSecretAccessKeyid)
-	if err != nil {
-		return errors.Wrap(err, "error getting AWS secret access key")
-	}
-	aws.SecretAccessKey = string(s)
 	return nil
 }
 
