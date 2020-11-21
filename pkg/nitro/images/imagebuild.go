@@ -105,7 +105,7 @@ func (b *ImageBuilder) StartBuilds(ctx context.Context, envname string, rc *mode
 	if b.BuildTimeout == time.Duration(0) {
 		b.BuildTimeout = DefaultBuildTimeout
 	}
-	buildimage := func(ctx context.Context, name, repo, image, ref, dockerfilepath string) {
+	buildimage := func(ctx context.Context, name, repo, image, ref, dockerfilepath string, buildargs map[string]string) {
 		batch.outcomes.Lock()
 		batch.outcomes.started[buildid(envname, name)] = struct{}{}
 		batch.outcomes.Unlock()
@@ -113,7 +113,7 @@ func (b *ImageBuilder) StartBuilds(ctx context.Context, envname string, rc *mode
 		eventlogger.GetLogger(ctx).SetImageStarted(name)
 
 		end := b.MC.Timing("images.build", "repo:"+repo, "triggering_repo:"+rc.Application.Repo)
-		err := b.Backend.BuildImage(ctx, envname, repo, image, ref, BuildOptions{DockerfilePath: dockerfilepath})
+		err := b.Backend.BuildImage(ctx, envname, repo, image, ref, BuildOptions{DockerfilePath: dockerfilepath, BuildArgs: buildargs})
 		end(fmt.Sprintf("success:%v", err == nil))
 
 		eventlogger.GetLogger(ctx).SetImageCompleted(name, err != nil)
@@ -125,12 +125,12 @@ func (b *ImageBuilder) StartBuilds(ctx context.Context, envname string, rc *mode
 	cfs := []context.CancelFunc{}
 	ctx2, cf := context.WithTimeout(ctx, b.BuildTimeout)
 	cfs = append(cfs, cf)
-	go buildimage(ctx2, models.GetName(rc.Application.Repo), rc.Application.Repo, rc.Application.Image, rc.Application.Ref, rc.Application.DockerfilePath)
+	go buildimage(ctx2, models.GetName(rc.Application.Repo), rc.Application.Repo, rc.Application.Image, rc.Application.Ref, rc.Application.DockerfilePath, rc.Application.BuildArgs)
 	for _, d := range rc.Dependencies.All() {
 		if d.Repo != "" { // only build images for Repo (branch-matched) dependencies
 			ctx3, cf := context.WithTimeout(ctx, b.BuildTimeout)
 			cfs = append(cfs, cf)
-			go buildimage(ctx3, d.Name, d.Repo, d.AppMetadata.Image, d.AppMetadata.Ref, d.AppMetadata.DockerfilePath)
+			go buildimage(ctx3, d.Name, d.Repo, d.AppMetadata.Image, d.AppMetadata.Ref, d.AppMetadata.DockerfilePath, d.AppMetadata.BuildArgs)
 		}
 	}
 	stopf := func() {
