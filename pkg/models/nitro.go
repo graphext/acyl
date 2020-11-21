@@ -52,19 +52,20 @@ func GetName(repo string) string {
 
 // RepoConfigAppMetadata models app-specific metadata for the primary application
 type RepoConfigAppMetadata struct {
-	Repo              string   `yaml:"-" json:"repo"`   // set by nitro
-	Ref               string   `yaml:"-" json:"ref"`    // set by nitro
-	Branch            string   `yaml:"-" json:"branch"` // set by nitro
-	ChartPath         string   `yaml:"chart_path" json:"chart_path"`
-	ChartRepoPath     string   `yaml:"chart_repo_path" json:"chart_repo_path"`
-	ChartVarsPath     string   `yaml:"chart_vars_path" json:"chart_vars_path"`
-	ChartVarsRepoPath string   `yaml:"chart_vars_repo_path" json:"chart_vars_repo_path"`
-	Image             string   `yaml:"image" json:"image"`
-	DockerfilePath    string   `yaml:"dockerfile_path" json:"dockerfile_path"`
-	ChartTagValue     string   `yaml:"image_tag_value" json:"image_tag_value"`
-	NamespaceValue    string   `yaml:"namespace_value" json:"namespace_value"`
-	EnvNameValue      string   `yaml:"env_name_value" json:"env_name_value"`
-	ValueOverrides    []string `yaml:"value_overrides" json:"value_overrides"`
+	Repo              string            `yaml:"-" json:"repo"`   // set by nitro
+	Ref               string            `yaml:"-" json:"ref"`    // set by nitro
+	Branch            string            `yaml:"-" json:"branch"` // set by nitro
+	ChartPath         string            `yaml:"chart_path" json:"chart_path"`
+	ChartRepoPath     string            `yaml:"chart_repo_path" json:"chart_repo_path"`
+	ChartVarsPath     string            `yaml:"chart_vars_path" json:"chart_vars_path"`
+	ChartVarsRepoPath string            `yaml:"chart_vars_repo_path" json:"chart_vars_repo_path"`
+	Image             string            `yaml:"image" json:"image"`
+	BuildArgs         map[string]string `yaml:"build_args" json:"build_args"`
+	DockerfilePath    string            `yaml:"dockerfile_path" json:"dockerfile_path"`
+	ChartTagValue     string            `yaml:"image_tag_value" json:"image_tag_value"`
+	NamespaceValue    string            `yaml:"namespace_value" json:"namespace_value"`
+	EnvNameValue      string            `yaml:"env_name_value" json:"env_name_value"`
+	ValueOverrides    []string          `yaml:"value_overrides" json:"value_overrides"`
 }
 
 const (
