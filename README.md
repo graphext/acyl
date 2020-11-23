@@ -67,7 +67,7 @@ For more details, see [Local Development](https://github.com/dollarshaveclub/acy
 
 ### Build Acyl image
 
-- `GITHUB_TOKEN=*********** acyl config test create --image-build-mode=docker-nopush -v --search-paths $HOME/Projects/acyl`
+- `GITHUB_TOKEN=*********** acyl config test create --image-build-mode=docker-nopush -v --search-paths $HOME/Projects/acyl` or use docker build in this repo
 - Tag new image and upload to your registry
 
 ### Create acyl deployment with acyl itself
@@ -81,7 +81,8 @@ For more details, see [Local Development](https://github.com/dollarshaveclub/acy
   * Members: Read-only
   * events: pull request pull request review, pull request review comment
 - Create and get secrets from github app. Apply to dummy-acyl-secrets secret.
-- Generate github token to access repo and add it to furan dummy secrets
+- Generate github token/dockercfg to access repo and add it to furan dummy secrets.
+- Create default-build-args secret for furan and add desired build-args.
 ### Run DB migrations
 
 On one terminal forward db port to your computer:
