@@ -81,7 +81,7 @@ For more details, see [Local Development](https://github.com/dollarshaveclub/acy
   * Members: Read-only
   * events: pull request pull request review, pull request review comment
 - Create and get secrets from github app. Apply to dummy-acyl-secrets secret.
-- Generate github token/dockercfg to access repo and add it to furan dummy secrets.
+- Generate github token and dockercfg to access repo and add it to furan dummy secrets.
 - Create default-build-args secret for furan and add desired build-args.
 ### Run DB migrations
 

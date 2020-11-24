@@ -26,7 +26,7 @@ application:
   - "cronautoscaling.enabled=false"
   - "serviceaccount=nitro"
   - "replicaCount=1"
-  - "image.tag=048cfcd73336eb6002ee0bb4c90bd3e3d2b5a924"
+  - "image.tag=5953838f2dcc5f9781047fc9c560f2ef0f23581e"
   - "image.repository=eu.gcr.io/graphext-0/testing/acyl"
 
 dependencies:
@@ -36,7 +36,7 @@ dependencies:
       default_branch: master
       value_overrides:
         - "replicaCount=1"
-        - "image.tag=350b42a8d0e0a7f0e936980da63e5571dd245b37"
+        - "image.tag=886fb0764219869b45f1bb4356a5776358f2f4e5"
 
     - chart_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql'
       chart_vars_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql/values.yaml'
