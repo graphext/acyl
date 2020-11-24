@@ -37,6 +37,7 @@ dependencies:
       value_overrides:
         - "replicaCount=1"
         - "image.tag=886fb0764219869b45f1bb4356a5776358f2f4e5"
+        - "image.repository=eu.gcr.io/graphext-0/testing/furan"
 
     - chart_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql'
       chart_vars_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql/values.yaml'
