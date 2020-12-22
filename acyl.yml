@@ -7,7 +7,7 @@ target_branches:
 application:
   chart_path: '.helm/charts/acyl'
   chart_vars_path: '.helm/charts/acyl/values.yaml'
-  image: eu.gcr.io/graphext-0/testing/acyl
+  image: eu.gcr.io/graphext-development/acyl
   value_overrides:
   - "ingress.traefik.enabled=false"
   - "ingress.argo_host=acyl.testing.graphext.com"
@@ -27,7 +27,7 @@ application:
   - "serviceaccount=nitro"
   - "replicaCount=1"
   - "image.tag=5953838f2dcc5f9781047fc9c560f2ef0f23581e"
-  - "image.repository=eu.gcr.io/graphext-0/testing/acyl"
+  - "image.repository=eu.gcr.io/graphext-development/acyl"
 
 dependencies:
   direct:
@@ -37,7 +37,7 @@ dependencies:
       value_overrides:
         - "replicaCount=1"
         - "image.tag=886fb0764219869b45f1bb4356a5776358f2f4e5"
-        - "image.repository=eu.gcr.io/graphext-0/testing/furan"
+        - "image.repository=eu.gcr.io/graphext-development/furan"
 
     - chart_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql'
       chart_vars_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql/values.yaml'
