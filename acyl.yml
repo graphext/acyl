@@ -20,7 +20,7 @@ application:
   - "app.secrets_from_env=true"
   - "app.k8s_secret_injections="
   - "app.operation_timeout_override=30m"
-  - "app.k8s_secret_injections=image-pull-secret=k8s/image_pull_secret"
+  - "app.k8s_secret_injections=image-pull-secret=K8S_IMAGE_PULL_SECRET"
   - "app.ui.base_url=https://acyl.testing.graphext.com"
   - "app.metrics_tags=local:acyl"
   - "cronautoscaling.enabled=false"
