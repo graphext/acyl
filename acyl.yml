@@ -28,9 +28,7 @@ application:
   - "replicaCount=1"
   - "image.tag=5953838f2dcc5f9781047fc9c560f2ef0f23581e"
   - "image.repository=eu.gcr.io/graphext-development/acyl"
-  - "resources.limits.memory=100Mi"
   - "resources.requests.cpu=20m"
-  - "resources.limits.cpu=20m"
   - "resources.requests.memory=100Mi"
 dependencies:
   direct:
