@@ -36,7 +36,7 @@ dependencies:
       name: furan
       default_branch: master
       value_overrides:
-        - "replicaCount=1"
+        - "replicaCount=3"
         - "image.tag=886fb0764219869b45f1bb4356a5776358f2f4e5"
         - "image.repository=eu.gcr.io/graphext-development/furan"
 
