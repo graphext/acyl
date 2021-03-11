@@ -104,6 +104,8 @@ spec:
           {{ if .Values.app.ui.enforce_oauth }}
           - "--ui-enforce-oauth"
           {{ end }}
+          - --slack-channel
+          - 'acyl'
         ports:
         - containerPort: {{ .Values.service.internalPort }}
         livenessProbe:
