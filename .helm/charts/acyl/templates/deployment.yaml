@@ -106,6 +106,10 @@ spec:
           {{ end }}
           - --slack-channel
           - 'acyl'
+          - --slack-mapper-map-path
+          - 'code_infrastructure/users_map.json'
+          - --slack-mapper-repo string
+          - 'graphext/kubernetes_config'
         ports:
         - containerPort: {{ .Values.service.internalPort }}
         livenessProbe:
