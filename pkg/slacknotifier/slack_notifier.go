@@ -32,6 +32,7 @@ type SlackNotifier struct {
 // SlackAPIClient describes the methods we use on slack.Client
 type SlackAPIClient interface {
 	PostMessage(channel, text string, params slack.PostMessageParameters) (string, string, error)
+	GetUsers() ([]*slack.User, error)
 }
 
 // NewSlackNotifier returns a SlackNotifier using the provided API token
@@ -199,8 +200,34 @@ func (sn *SlackNotifier) userChannelForGithubUsername(githubUsername string) (st
 		return "", nil
 	}
 
-	channel := fmt.Sprintf("@%v", un)
+	channel, uerr := sn.userIDfromUsername(un)
+	if uerr != nil {
+		return "", err
+	}
+	if len(channel) == 0 {
+		return "", nil
+	}
+
 	return channel, nil
+}
+
+func (sn *SlackNotifier) userIDfromUsername(slackUsername string) (string, error) {
+	users, err := sn.api.GetUsers()
+	if err != nil {
+		return "", err
+	}
+
+	if len(users) == 0 {
+		return "", nil
+	}
+
+	var userid string
+	for _, v := range users {
+		if v.Name == slackUsername {
+			userid = v.ID
+		}
+	}
+	return userid, nil
 }
 
 func (sn *SlackNotifier) fanoutPostMessage(channels []string, p slack.PostMessageParameters) error {
