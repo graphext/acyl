@@ -1974,11 +1974,7 @@ func TestDeleteAPIKey(t *testing.T) {
 		},
 	}
 	for _, r := range requests {
-<<<<<<< HEAD
 		id, err := dl.CreateAPIKey(context.Background(), r.PermissionLevel, r.Name, r.Description, r.GitHubUser)
-=======
-		id, err := dl.CreateAPIKey(context.Background(),r.PermissionLevel, r.Name, r.Description, r.GitHubUser)
->>>>>>> parent of 07bc60d24 (Revert "Merge branch 'master' of github.com:dollarshaveclub/acyl")
 		if err != nil {
 			t.Fatalf("create api key should have succeeded: %v", err)
 		}
