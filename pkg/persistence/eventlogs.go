@@ -141,7 +141,7 @@ func (pg *PGLayer) SetEventStatusConfig(id uuid.UUID, processingTime time.Durati
 	if err != nil {
 		return errors.Wrap(err, "error marshaling processingTime")
 	}
-	q := `UPDATE event_logs SET 
+	q := `UPDATE event_logs SET
 			status = jsonb_set(status, '{config}', status->'config' || json_build_object('processing_time', $1::text, 'ref_map', $2::jsonb)::jsonb)
 		  WHERE id = $3;`
 	_, err = pg.db.Exec(q, string(ptj), string(rj), id)
@@ -161,7 +161,7 @@ func (pg *PGLayer) SetEventStatusRenderedStatus(id uuid.UUID, rstatus models.Ren
 	if err != nil {
 		return errors.Wrap(err, "error marshaling rendered event status")
 	}
-	q := `UPDATE event_logs SET 
+	q := `UPDATE event_logs SET
 			status = jsonb_set(status, '{config,rendered_status}', $1::jsonb)
 		  WHERE id = $2;`
 	_, err = pg.db.Exec(q, string(j), id)
@@ -176,7 +176,7 @@ func (pg *PGLayer) SetEventStatusTree(id uuid.UUID, tree map[string]models.Event
 	if err != nil {
 		return errors.Wrap(err, "error marshaling tree")
 	}
-	q := `UPDATE event_logs SET 
+	q := `UPDATE event_logs SET
 			status = jsonb_set(status, '{tree}', $1::jsonb)
 		  WHERE id = $2;`
 	_, err = pg.db.Exec(q, string(tj), id)
@@ -184,7 +184,7 @@ func (pg *PGLayer) SetEventStatusTree(id uuid.UUID, tree map[string]models.Event
 }
 
 func (pg *PGLayer) SetEventStatusCompleted(id uuid.UUID, configStatus models.EventStatus) error {
-	q := `UPDATE event_logs SET 
+	q := `UPDATE event_logs SET
 			status = jsonb_set(status, '{config}', status->'config' || json_build_object('status', $1::int, 'completed', $2::text)::jsonb)
 		  WHERE id = $3;`
 	_, err := pg.db.Exec(q, configStatus, JSONTime(time.Now().UTC()), id)
@@ -192,7 +192,7 @@ func (pg *PGLayer) SetEventStatusCompleted(id uuid.UUID, configStatus models.Eve
 }
 
 func (pg *PGLayer) SetEventStatusImageStarted(id uuid.UUID, name string) error {
-	q := `UPDATE event_logs SET 
+	q := `UPDATE event_logs SET
 			status = jsonb_set(status, ARRAY['tree',$1,'image'], status->'tree'->$1->'image' || json_build_object('started', $2::text)::jsonb)
 		  WHERE id = $3;`
 	_, err := pg.db.Exec(q, name, JSONTime(time.Now().UTC()), id)
@@ -237,26 +237,4 @@ func (pg *PGLayer) GetEventStatus(id uuid.UUID) (*models.EventStatusSummary, err
 		return nil, errors.Wrap(err, "error getting event status by id")
 	}
 	return out, nil
-}
-
-// GetEventLogsWithStatusByEnvName gets all event logs for an environment including Status
-func (pg *PGLayer) GetEventLogsWithStatusByEnvName(name string) ([]models.EventLog, error) {
-	var logs []models.EventLog
-	q := `SELECT ` + models.EventLog{}.ColumnsWithStatus() + ` FROM event_logs WHERE env_name = $1;`
-	rows, err := pg.db.Query(q, name)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, errors.Wrapf(err, "error querying")
-	}
-	defer rows.Close()
-	for rows.Next() {
-		el := models.EventLog{}
-		if err := rows.Scan(el.ScanValuesWithStatus()...); err != nil {
-			return nil, errors.Wrap(err, "error scanning row")
-		}
-		logs = append(logs, el)
-	}
-	return logs, nil
 }

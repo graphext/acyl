@@ -703,7 +703,7 @@ func (api *v2api) userEnvDetailHandler(w http.ResponseWriter, r *http.Request) {
 		// if there's no k8senv yet, we'll just use an empty one (this will result in an empty namespace in the UI)
 		k8senv = &models.KubernetesEnvironment{}
 	}
-	elogs, err := api.dl.GetEventLogsWithStatusByEnvName(envname)
+	elogs, err := api.dl.GetEventLogsByEnvName(envname)
 	if err != nil {
 		api.rlogger(r).Logf("error getting eventlogs from db: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)

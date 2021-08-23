@@ -50,8 +50,6 @@ var k8sGroupBindingsStr, k8sSecretsStr, k8sPrivilegedReposStr string
 
 var pgConfig config.PGConfig
 var logger *log.Logger
-var s3config config.S3Config
-var failureTemplatePath string
 var dogstatsdAddr, dogstatsdTags string
 var datadogServiceName, datadogTracingAgentAddr string
 var reaperLockKey int64
@@ -92,10 +90,6 @@ func init() {
 	serverCmd.PersistentFlags().StringVar(&k8sGroupBindingsStr, "k8s-group-bindings", "", "optional k8s RBAC group bindings (comma-separated) for new environment namespaces in GROUP1=CLUSTER_ROLE1,GROUP2=CLUSTER_ROLE2 format (ex: users=edit) (Nitro)")
 	serverCmd.PersistentFlags().StringVar(&k8sSecretsStr, "k8s-secret-injections", "", "optional k8s secret injections (comma-separated) for new environment namespaces in SECRET_NAME=VAULT_ID (Vault path using secrets mapping) format. Secret value in Vault must be a JSON-encoded object with two keys: 'data' (map of string to base64-encoded bytes), 'type' (string). (Nitro)")
 	serverCmd.PersistentFlags().StringVar(&k8sPrivilegedReposStr, "k8s-privileged-repo-whitelist", "dollarshaveclub/acyl", "optional comma-separated whitelist of GitHub repositories whose environment service accounts will be allowed cluster-admin privileges (Nitro)")
-	serverCmd.PersistentFlags().StringVar(&failureTemplatePath, "failure-template-path", "/opt/html/failedenv.html.tmpl", "path to HTML failure report template (if missing, failure reports will be disabled")
-	serverCmd.PersistentFlags().StringVar(&s3config.Region, "failure-report-s3-region", "us-west-2", "AWS S3 region for environment failure reports")
-	serverCmd.PersistentFlags().StringVar(&s3config.Bucket, "failure-report-s3-bucket", "", "AWS S3 bucket for environment failure reports")
-	serverCmd.PersistentFlags().StringVar(&s3config.KeyPrefix, "failure-report-s3-key-prefix", "", "AWS S3 key prefix for environment failure reports (key format: <prefix>envfailures/<timestamp>/<env name>.html)")
 	serverCmd.PersistentFlags().StringVarP(&dogstatsdAddr, "dogstatsd-addr", "q", "127.0.0.1:8125", "Address of dogstatsd for metrics")
 	serverCmd.PersistentFlags().StringVar(&dogstatsdTags, "dogstatsd-tags", "", "Comma-separated list of tags to add to dogstatsd metrics (TAG:VALUE)")
 	serverCmd.PersistentFlags().StringVar(&datadogTracingAgentAddr, "datadog-tracing-agent-addr", "127.0.0.1:8126", "Address of datadog tracing agent")

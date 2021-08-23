@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"html/template"
-	"io"
 	"sort"
 	"time"
 
@@ -30,7 +28,7 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
-	billy "gopkg.in/src-d/go-billy.v4"
+	"gopkg.in/src-d/go-billy.v4"
 	billyutil "gopkg.in/src-d/go-billy.v4/util"
 )
 
@@ -62,8 +60,11 @@ type Manager struct {
 	AWSCreds             config.AWSCreds
 	S3Config             config.S3Config
 	GlobalLimit          uint
+<<<<<<< HEAD
 	failureTemplate      *template.Template
 	s3p                  s3Pusher
+=======
+>>>>>>> cc412a35660d2b91dca6c272bd2f9bd33eec9f58
 	OperationTimeout     time.Duration
 	UIBaseURL            string
 }

@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,17 +22,22 @@ import (
 	"time"
 
 	"github.com/dollarshaveclub/acyl/pkg/nitro/metahelm"
+	lorem "github.com/dollarshaveclub/acyl/pkg/persistence/golorem"
 	"github.com/dollarshaveclub/acyl/pkg/spawner"
 	"github.com/google/uuid"
+	v1 "k8s.io/api/core/v1"
 
 	"github.com/dollarshaveclub/acyl/pkg/config"
 	"github.com/dollarshaveclub/acyl/pkg/ghclient"
 	"github.com/dollarshaveclub/acyl/pkg/models"
 	"github.com/dollarshaveclub/acyl/pkg/persistence"
 
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/spf13/cobra"
 
 	"github.com/dollarshaveclub/acyl/pkg/api"
+	mh "github.com/dollarshaveclub/metahelm/pkg/metahelm"
 )
 
 // serverCmd represents the server command
@@ -78,8 +84,71 @@ func mockEvents(fdl *persistence.FakeDataLayer, qae []models.QAEnvironment) {
 	log.Printf("creating fake update event for %v: %v", env.Name, id)
 	id = fdl.NewFakeEvent(env.Created.Add(2*time.Hour), env.Repo, env.User, env.Name, models.UpdateEvent, false)
 	log.Printf("creating fake update event for %v (failure): %v", env.Name, id)
+	mockFailedEventStatus(fdl, id)
 	id = fdl.NewFakeEvent(env.Created.Add(3*time.Hour), env.Repo, env.User, env.Name, models.DestroyEvent, true)
 	log.Printf("creating fake destroy event for %v: %v", env.Name, id)
+}
+
+func mockFailedEventStatus(fdl *persistence.FakeDataLayer, id uuid.UUID) {
+	contStarted := false
+	failedPod := mh.FailedPod{
+		Name: "foo-pod-name",
+		Phase: "foo-pod-phase",
+		Message: "foo-pod-message",
+		Reason: "foo-pod-reason",
+		Conditions: []v1.PodCondition{
+			v1.PodCondition{
+				Type:               v1.PodConditionType("foo-pod-condition-type"),
+				Status:             v1.ConditionStatus("foo-pod-condition-status"),
+				LastProbeTime:      meta.Now(),
+				LastTransitionTime: meta.Now(),
+				Reason:             "foo-pod-condition-reason",
+				Message:            "foo-pod-condition-message",
+			},
+		},
+		ContainerStatuses: []v1.ContainerStatus{
+			v1.ContainerStatus{
+				Name: "foo-container-name",
+				State: v1.ContainerState{
+					Waiting: &v1.ContainerStateWaiting{
+						Reason:  "foo-container-state-reason",
+						Message: "foo-container-state-message",
+					},
+				},
+				Ready: false,
+				RestartCount: 7,
+				Image: "foo-container-image",
+				ImageID: "foo-container-image-id",
+				Started: &contStarted,
+			},
+		},
+		Logs: map[string][]byte{"foo-container-name": []byte(
+			fmt.Sprintf("%v\n%v\n%v\n%v\n%v\n",
+				fmt.Sprintf("%v: %v", time.Now().UTC().Format(time.RFC822), lorem.Sentence(5, 10)),
+				fmt.Sprintf("%v: %v", time.Now().UTC().Format(time.RFC822), lorem.Sentence(5, 10)),
+				fmt.Sprintf("%v: %v", time.Now().UTC().Format(time.RFC822), lorem.Sentence(5, 10)),
+				fmt.Sprintf("%v: %v", time.Now().UTC().Format(time.RFC822), lorem.Sentence(5, 10)),
+				fmt.Sprintf("%v: %v", time.Now().UTC().Format(time.RFC822), lorem.Sentence(5, 10)),
+			),
+		)},
+	}
+	err := fdl.SetEventStatusFailed(id, mh.ChartError{
+		HelmError:       errors.New("foo-helm-error"),
+		HelmErrorString: "foo-helm-error-string",
+		Level:           uint(1),
+		FailedDaemonSets: map[string][]mh.FailedPod{
+			"foo-failed-daemon-sets": {failedPod},
+		},
+		FailedDeployments: map[string][]mh.FailedPod{
+			"foo-failed-deployments": {failedPod},
+		},
+		FailedJobs: map[string][]mh.FailedPod{
+			"foo-failed-jobs": {failedPod},
+		},
+	})
+	if err != nil {
+		log.Fatal("SetEventStatusFailed error: ", err)
+	}
 }
 
 func loadMockData(fpath string) *persistence.FakeDataLayer {

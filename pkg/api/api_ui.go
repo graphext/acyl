@@ -29,6 +29,7 @@ import (
 
 	"github.com/dollarshaveclub/acyl/pkg/persistence"
 
+	mh "github.com/dollarshaveclub/metahelm/pkg/metahelm"
 	muxtrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gorilla/mux"
 )
 
@@ -91,11 +92,13 @@ var partials = map[string]string{
 }
 
 var viewPaths = map[string]string{
-	"status":     path.Join("views", "status.html"),
-	"auth_error": path.Join("views", "autherror.html"),
-	"home":       path.Join("views", "home.html"),
-	"env":        path.Join("views", "env.html"),
-	"denied":     path.Join("views", "denied.html"),
+	"status":         path.Join("views", "status.html"),
+	"auth_error":     path.Join("views", "autherror.html"),
+	"home":           path.Join("views", "home.html"),
+	"env":            path.Join("views", "env.html"),
+	"denied":         path.Join("views", "denied.html"),
+	"help":           path.Join("views", "help.html"),
+	"failure_report": path.Join("views", "failurereport.html"),
 }
 
 func newSessionsCookieStore(oauthCfg OAuthConfig) sessions.Store {
@@ -249,6 +252,8 @@ func (api *uiapi) register(r *muxtrace.Router) error {
 	r.HandleFunc(urlPath("/event/status"), middlewareChain(api.statusHandler, api.authenticate)).Methods("GET")
 	r.HandleFunc(urlPath("/home"), middlewareChain(api.homeHandler, api.authenticate)).Methods("GET")
 	r.HandleFunc(urlPath("/env/{envname}"), middlewareChain(api.envHandler, api.authenticate)).Methods("GET")
+	r.HandleFunc(urlPath("/help"), middlewareChain(api.helpHandler, api.authenticate)).Methods("GET")
+	r.HandleFunc(urlPath("/event/status/failure_report"), middlewareChain(api.failureReportHandler, api.authenticate)).Methods("GET")
 
 	// unauthenticated OAuth callback
 	r.HandleFunc(urlPath("/oauth/callback"), middlewareChain(api.authCallbackHandler)).Methods("GET")
@@ -756,6 +761,66 @@ func (api *uiapi) envHandler(w http.ResponseWriter, r *http.Request) {
 	api.render(w, "env", &td)
 }
 
+<<<<<<< HEAD
+=======
+func (api *uiapi) helpHandler(w http.ResponseWriter, r *http.Request) {
+	uis, err := getSessionFromContext(r.Context())
+	if err != nil {
+		api.rlogger(r).Logf("error getting ui session: %v", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	api.render(w, "help", api.defaultBaseTemplateData(&uis))
+}
+
+type failureReportTmplData struct {
+	BaseTemplateData
+	EnvName, EventID, PullRequestURL string
+	StartedTime, FailedTime          time.Time
+	FailedResources                  mh.ChartError
+}
+
+func (api *uiapi) failureReportHandler(w http.ResponseWriter, r *http.Request) {
+	uis, err := getSessionFromContext(r.Context())
+	if err != nil {
+		api.rlogger(r).Logf("error getting ui session: %v", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		api.rlogger(r).Logf("error getting id from url query")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	elog, err := api.getEventFromIDString(id)
+	if err != nil {
+		api.logger.Printf("error serving chart error page: %v", err)
+		if strings.Contains(err.Error(), "invalid") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if elog == nil {
+		api.logger.Printf("error serving chart error page: event log not found: %v", id)
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	td := failureReportTmplData{
+		BaseTemplateData: api.defaultBaseTemplateData(&uis),
+		EnvName:          elog.EnvName,
+		EventID:          id,
+		PullRequestURL:   fmt.Sprintf("https://github.com/%v/pull/%v", elog.Repo, elog.PullRequest),
+		StartedTime:      elog.Status.Config.Started,
+		FailedTime:       elog.Status.Config.Completed,
+		FailedResources:  elog.Status.Config.FailedResources,
+	}
+	api.render(w, "failure_report", &td)
+}
+
+>>>>>>> cc412a35660d2b91dca6c272bd2f9bd33eec9f58
 func (api *uiapi) deniedHandler(w http.ResponseWriter, r *http.Request) {
 	api.render(w, "denied", api.defaultBaseTemplateData(nil))
 }

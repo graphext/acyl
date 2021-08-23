@@ -1,6 +1,7 @@
 package metahelm
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -200,5 +201,70 @@ func TestErrorPopulateFromDeployment(t *testing.T) {
 	}
 	if ec := fp[0].ContainerStatuses[0].State.Terminated.ExitCode; ec != 128 {
 		t.Fatalf("bad exit code: %v", ec)
+	}
+}
+
+func TestUnmarshalError(t *testing.T) {
+	r := &appsv1.ReplicaSet{}
+	d := &appsv1.Deployment{}
+	p := &corev1.Pod{}
+	p.ObjectMeta.Name = "foo-1234"
+	p.Namespace = DefaultK8sNamespace
+	p.ObjectMeta.Labels = map[string]string{"app": "foo"}
+	p.Status = corev1.PodStatus{
+		Phase: corev1.PodFailed,
+		Conditions: []corev1.PodCondition{
+			corev1.PodCondition{
+				Type:   corev1.PodScheduled,
+				Status: corev1.ConditionTrue,
+			},
+		},
+		ContainerStatuses: []corev1.ContainerStatus{
+			corev1.ContainerStatus{
+				Name: "foo",
+				State: corev1.ContainerState{
+					Terminated: &corev1.ContainerStateTerminated{
+						ExitCode: 128,
+					},
+				},
+			},
+		},
+	}
+	reps := int32(1)
+	d.Spec.Replicas = &reps
+	d.Spec.Template.Labels = map[string]string{"app": "foo"}
+	d.Spec.Template.Spec.NodeSelector = map[string]string{}
+	d.Spec.Template.Name = "foo"
+	d.Spec.Selector = &metav1.LabelSelector{}
+	d.Spec.Selector.MatchLabels = map[string]string{"app": "foo"}
+	r.Spec.Selector = d.Spec.Selector
+	r.Spec.Replicas = &reps
+	r.Status.ReadyReplicas = 1
+	r.Name = "replicaset-" + "foo"
+	r.Namespace = DefaultK8sNamespace
+	r.Labels = d.Spec.Template.Labels
+	d.Labels = d.Spec.Template.Labels
+	d.ObjectMeta.UID = mtypes.UID("foo" + "-deployment")
+	iscontroller := true
+	r.ObjectMeta.OwnerReferences = []metav1.OwnerReference{metav1.OwnerReference{UID: d.ObjectMeta.UID, Controller: &iscontroller}}
+	d.Name = "foo"
+	d.ObjectMeta.Name = "foo"
+	d.Namespace = DefaultK8sNamespace
+	r.Spec.Template = d.Spec.Template
+	kc := fake.NewSimpleClientset(r, d, p)
+	ce := NewChartError(errors.New("some helm error"))
+	err := ce.PopulateFromDeployment(DefaultK8sNamespace, "foo", kc, 500)
+	if err != nil {
+		t.Fatalf("could not populate chart error from deployment: %v", err)
+	}
+
+	encodedCE, err := json.Marshal(ce)
+	if err != nil {
+		t.Fatalf("unable to marshal error: %v", err)
+	}
+
+	var outputCE ChartError
+	if err := json.Unmarshal(encodedCE, &outputCE); err != nil {
+		t.Fatalf("error unmarshaling chart error: %v", err)
 	}
 }

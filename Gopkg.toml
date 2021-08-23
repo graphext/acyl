@@ -35,7 +35,7 @@
 
 [[constraint]]
   name = "github.com/dollarshaveclub/metahelm"
-  version = "=0.6.1"
+  version = "=0.6.3"
 
 [[constraint]]
   name = "github.com/golang/mock"

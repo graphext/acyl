@@ -106,7 +106,11 @@ function updateConfig(cfg) {
     const revlink = `https://github.com/${cfg.triggering_repo}/commit/${cfg.revision}`;
     document.getElementById("trepo-revision").innerHTML = `<a href="${revlink}">${cfg.revision}</a>`;
     document.getElementById("event-type").innerHTML = cfg.type;
-    document.getElementById("event-status").innerHTML = cfg.status;
+    if (cfg.status === 'failed') {
+        document.getElementById("event-status").innerHTML = `<span class="badge badge-danger acyl-status pl-2 pr-0 py-0" style="font-size: medium">${cfg.status} <a class="fas btn btn-sm btn-danger" title="View Chart Error" href="${apiBaseURL}/ui/event/status/failure_report?id=${event_id}" role="button">&#xf35d</a></span>`;
+    } else {
+        document.getElementById("event-status").innerHTML = cfg.status;
+    }
     document.getElementById("config-processing-duration").innerHTML = cfg.processing_time;
     document.getElementById("event-started-time").innerHTML = cfg.started;
 
@@ -549,6 +553,7 @@ function updateTree(treedata) {
         .attr("class", "link")
         .attr("d", diagonal);
 }
+
 
 function updateLogs(logs) {
     document.getElementById("logsContainer").innerHTML = logs.join("<br \>\n");
