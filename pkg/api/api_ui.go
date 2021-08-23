@@ -252,7 +252,10 @@ func (api *uiapi) register(r *muxtrace.Router) error {
 	r.HandleFunc(urlPath("/home"), middlewareChain(api.homeHandler, api.authenticate)).Methods("GET")
 	r.HandleFunc(urlPath("/env/{envname}"), middlewareChain(api.envHandler, api.authenticate)).Methods("GET")
 	r.HandleFunc(urlPath("/help"), middlewareChain(api.helpHandler, api.authenticate)).Methods("GET")
+<<<<<<< HEAD
 	r.HandleFunc(urlPath("/event/status/failure_report"), middlewareChain(api.failureReportHandler, api.authenticate)).Methods("GET")
+=======
+>>>>>>> parent of 07bc60d24 (Revert "Merge branch 'master' of github.com:dollarshaveclub/acyl")
 
 	// unauthenticated OAuth callback
 	r.HandleFunc(urlPath("/oauth/callback"), middlewareChain(api.authCallbackHandler)).Methods("GET")
@@ -773,6 +776,7 @@ func (api *uiapi) helpHandler(w http.ResponseWriter, r *http.Request) {
 	api.render(w, "help", api.defaultBaseTemplateData(&uis))
 }
 
+<<<<<<< HEAD
 type failureReportTmplData struct {
 	BaseTemplateData
 	EnvName, EventID, PullRequestURL string
@@ -820,6 +824,8 @@ func (api *uiapi) failureReportHandler(w http.ResponseWriter, r *http.Request) {
 	api.render(w, "failure_report", &td)
 }
 
+=======
+>>>>>>> parent of 07bc60d24 (Revert "Merge branch 'master' of github.com:dollarshaveclub/acyl")
 func (api *uiapi) deniedHandler(w http.ResponseWriter, r *http.Request) {
 	api.render(w, "denied", api.defaultBaseTemplateData(nil))
 }
