@@ -45,7 +45,7 @@ func (tb *TerminalBackend) Send(n Notification) error {
 	}
 	rn, err := n.Template.Render(n.Data)
 	if err != nil {
-		return errors.Wrap(err, "error rendering template")
+		return fmt.Errorf("error rendering template: %w", err)
 	}
 	rmargin := int(tb.Margin)
 

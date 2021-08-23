@@ -107,8 +107,8 @@ func (tdl *TestDataLayer) insertFake(qae *models.QAEnvironment) error {
 
 func (tdl *TestDataLayer) insertPG(qae *models.QAEnvironment) error {
 	q := `INSERT INTO qa_environments
-	(name, created, raw_events, hostname, qa_type, username, repo, pull_request, source_sha, base_sha, source_branch, base_branch, source_ref, status, ref_map, commit_sha_map, amino_service_to_port, amino_kubernetes_namespace, amino_environment_id)
-	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19);`
+	(name, created, raw_events, hostname, qa_type, username, repo, pull_request, source_sha, base_sha, source_branch, base_branch, source_ref, status, ref_map, commit_sha_map, amino_service_to_port, amino_kubernetes_namespace, amino_environment_id, event_ids)
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20);`
 
 	crm2hstore := func(m models.RefMap) hstore.Hstore {
 		out := hstore.Hstore{Map: make(map[string]sql.NullString)}
@@ -126,7 +126,7 @@ func (tdl *TestDataLayer) insertPG(qae *models.QAEnvironment) error {
 		return out
 	}
 
-	args := []interface{}{qae.Name, qae.Created, pq.StringArray(qae.RawEvents), qae.Hostname, qae.QAType, qae.User, qae.Repo, qae.PullRequest, qae.SourceSHA, qae.BaseSHA, qae.SourceBranch, qae.BaseBranch, qae.SourceRef, qae.Status, crm2hstore(qae.RefMap), crm2hstore(qae.CommitSHAMap), casp2hstore(qae.AminoServiceToPort), qae.AminoKubernetesNamespace, qae.AminoEnvironmentID}
+	args := []interface{}{qae.Name, qae.Created, pq.StringArray(qae.RawEvents), qae.Hostname, qae.QAType, qae.User, qae.Repo, qae.PullRequest, qae.SourceSHA, qae.BaseSHA, qae.SourceBranch, qae.BaseBranch, qae.SourceRef, qae.Status, crm2hstore(qae.RefMap), crm2hstore(qae.CommitSHAMap), casp2hstore(qae.AminoServiceToPort), qae.AminoKubernetesNamespace, qae.AminoEnvironmentID, pq.Array(qae.EventIDs)}
 	if _, err := tdl.pgdb.Exec(q, args...); err != nil {
 		return errors.Wrapf(err, "error inserting QAEnvironment into database: %v", qae.Name)
 	}
@@ -187,6 +187,20 @@ func (tdl *TestDataLayer) insertEventLog(el models.EventLog) error {
 	return nil
 }
 
+func (tdl *TestDataLayer) insertAPIKeys(key models.APIKey) error {
+	if dltype == "fake" {
+		tdl.fdl.data.Lock()
+		tdl.fdl.data.apikeys[key.ID] = &key
+		tdl.fdl.data.Unlock()
+		return nil
+	}
+	q := `INSERT INTO api_keys (` + key.InsertColumns() + `) VALUES (` + key.InsertParams() + `);`
+	if _, err := tdl.pgdb.Exec(q, key.InsertValues()...); err != nil {
+		return errors.Wrap(err, "error inserting api keys")
+	}
+	return nil
+}
+
 func (tdl *TestDataLayer) insert(qa *models.QAEnvironment) error {
 	if dltype == "fake" {
 		return tdl.insertFake(qa)
@@ -235,6 +249,21 @@ func readTestEventLogData(path string) ([]models.EventLog, error) {
 	err = d.Decode(&data)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshaling test event log data: %v", err)
+	}
+	return data, nil
+}
+
+func readTestAPIKeysData(path string) ([]models.APIKey, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("error opening test api key file: %v", err)
+	}
+	defer f.Close()
+	data := []models.APIKey{}
+	d := json.NewDecoder(f)
+	err = d.Decode(&data)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshaling test api key data: %v", err)
 	}
 	return data, nil
 }
@@ -296,6 +325,15 @@ func (tdl *TestDataLayer) Setup(path string) error {
 	for _, el := range elogs {
 		if err := tdl.insertEventLog(el); err != nil {
 			return errors.Wrap(err, "error inserting event log")
+		}
+	}
+	apikeys, err := readTestAPIKeysData("testdata/api_keys.json")
+	if err != nil {
+		return errors.Wrap(err, "error reading api key data")
+	}
+	for _, key := range apikeys {
+		if err := tdl.insertAPIKeys(key); err != nil {
+			return errors.Wrap(err, "error inserting api key")
 		}
 	}
 	return nil

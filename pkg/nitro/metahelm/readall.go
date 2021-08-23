@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/pkg/errors"
 	billy "gopkg.in/src-d/go-billy.v4"
 )
 
@@ -14,7 +13,7 @@ var fileSizeMaxBytes = 500 * 1000000 // we won't try to read files larger than t
 func readFileSafely(fs billy.Filesystem, fp string) ([]byte, error) {
 	fi, err := fs.Stat(fp)
 	if err != nil {
-		return nil, errors.Wrap(err, "error getting file info")
+		return nil, fmt.Errorf("error getting file info: %w", err)
 	}
 	if fi.Size() > int64(fileSizeMaxBytes) {
 		return nil, fmt.Errorf("file size exceeds limit (%v bytes): %v", fileSizeMaxBytes, fi.Size())

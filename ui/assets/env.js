@@ -109,6 +109,10 @@ function eventrow(event) {
             tr.className = "table-warning";
             tdstatus.innerHTML = `<span class="badge badge-warning">Pending</span>`;
             break;
+        case "cancelled":
+            tr.className = "table-light";
+            tdstatus.innerHTML = `<span class="badge badge-dark">Cancelled</span>`;
+            break;
         default:
             tr.className = "table-active";
             tdstatus.innerHTML = `<span class="badge badge-secondary">Unknown</span>`;

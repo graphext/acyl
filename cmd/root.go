@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/dollarshaveclub/acyl/pkg/config"
+	"github.com/dollarshaveclub/acyl/pkg/nitro/metahelm"
 	"github.com/dollarshaveclub/acyl/pkg/secrets"
 	"github.com/dollarshaveclub/pvc"
 	"github.com/spf13/cobra"
@@ -18,11 +19,11 @@ var (
 )
 
 var vaultConfig config.VaultConfig
-var awsCreds config.AWSCreds
-var awsConfig config.AWSConfig
 var secretsConfig config.SecretsConfig
 var secretsbackend string
 var k8sClientConfig config.K8sClientConfig
+var tillerImageName string
+var tillerConfig metahelm.TillerConfig
 
 var RootCmd = &cobra.Command{
 	Use:   "acyl",
@@ -42,11 +43,10 @@ func init() {
 	RootCmd.PersistentFlags().StringVar(&vaultConfig.K8sAuthPath, "vault-k8s-auth-path", "kubernetes", "Vault k8s auth path (if using k8s auth & Vault secret backend)")
 	RootCmd.PersistentFlags().StringVarP(&vaultConfig.AppID, "vault-app-id", "d", os.Getenv("APP_ID"), "Vault App-ID (if using Vault secret backend)")
 	RootCmd.PersistentFlags().StringVarP(&vaultConfig.UserIDPath, "vault-user-id-path", "e", os.Getenv("USER_ID_PATH"), "Path to file containing Vault User-ID (if using Vault secret backend)")
-	RootCmd.PersistentFlags().StringVarP(&awsConfig.Region, "aws-region", "k", "us-west-2", "AWS region")
-	RootCmd.PersistentFlags().UintVarP(&awsConfig.MaxRetries, "aws-max-retries", "l", 3, "AWS max retries per operation")
 	RootCmd.PersistentFlags().StringVar(&secretsbackend, "secrets-backend", "vault", "Secret backend (one of: vault,env)")
 	RootCmd.PersistentFlags().StringVar(&secretsConfig.Mapping, "secrets-mapping", "", "Secrets mapping template string (required)")
 	RootCmd.PersistentFlags().StringVar(&k8sClientConfig.JWTPath, "k8s-jwt-path", "/var/run/secrets/kubernetes.io/serviceaccount/token", "Path to the JWT used to authenticate the k8s client to the API server")
+	RootCmd.PersistentFlags().StringVar(&tillerConfig.Image, "tiller-image", "helmpack/tiller:v2.17.0", "Name of Tiller image to use when installing charts")
 }
 
 func clierr(msg string, params ...interface{}) {
@@ -107,7 +107,7 @@ func getSecrets() {
 		clierr("error getting secrets client: %v", err)
 	}
 	sf := secrets.NewPVCSecretsFetcher(sc)
-	err = sf.PopulateAllSecrets(&awsCreds, &githubConfig, &slackConfig, &serverConfig, &pgConfig)
+	err = sf.PopulateAllSecrets(&githubConfig, &slackConfig, &serverConfig, &pgConfig)
 	if err != nil {
 		clierr("error getting secrets: %v", err)
 	}

@@ -17,5 +17,10 @@ For custom UI branding, pass the following JSON struct to the CLI:
   "title": "Some Title Text",
   // optional additional styling for the title text (CSS)
   "title_style": "font-weight: bold"
+  // optional additional document urls for help view
+  additional_doc_urls: {
+    "CustomTitle": "https://myurl.com/docs"
+    "CustomTitle2": "https://myotherurl.com/help"      
+  }
 }
 ```

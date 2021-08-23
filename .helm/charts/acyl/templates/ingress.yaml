@@ -13,11 +13,10 @@ metadata:
 
 spec:
   rules:
-    {{- if .Values.is_dqa }}
-    - host: {{ .Values.env_name }}-{{ .Values.ingress.argo_host }}
-    {{- else }}
-    - host: {{ .Values.ingress.argo_host }}
-    {{- end }}
+    {{- $serviceName := .Values.service.name -}}
+    {{- $servicePort := .Values.service.internalPort -}}
+    {{- range $host := .Values.ingress.hosts }}
+    - host: {{ $host }}
       http:
         paths:
           - path: /

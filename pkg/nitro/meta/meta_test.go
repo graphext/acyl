@@ -17,13 +17,13 @@ import (
 func readFiles() (map[string][]byte, error) {
 	files, err := ioutil.ReadDir("./testdata/")
 	if err != nil {
-		return nil, errors.Wrap(err, "error reading directory")
+		return nil, fmt.Errorf("error reading directory: %w", err)
 	}
 	out := make(map[string][]byte, len(files))
 	for _, f := range files {
 		d, err := ioutil.ReadFile("./testdata/" + f.Name())
 		if err != nil {
-			return nil, errors.Wrapf(err, "error reading file: %v", f.Name())
+			return nil, fmt.Errorf("error reading file: %v: %w", f.Name(), err)
 		}
 		out[f.Name()] = d
 	}

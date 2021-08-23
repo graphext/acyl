@@ -1,97 +1,69 @@
 package errors
 
-import (
-	"strings"
+import "errors"
 
-	pkgerrors "github.com/pkg/errors"
-)
-
-type operationError struct {
-	inner        error
-	user, system bool
+// A UserError wraps an underlying error to annotate it as being caused by
+// user error. The underlying error string is returned directly, meaning the
+// annotation can be detected using errors.As without the annotation affecting
+// how the errors are communicated.
+type UserError struct {
+	error
 }
 
-func (oe operationError) Error() string {
-	return oe.inner.Error()
+// Error returns err's underlying error string.
+func (err UserError) Error() string {
+	return err.error.Error()
 }
 
-// causer is from github.com/pkg/errors
-type causer interface {
-	Cause() error
+// Unwrap returns err's underlying error.
+func (err UserError) Unwrap() error {
+	return err.error
 }
 
-// causeAndWraps unwraps err to the root cause, returning it as well as all wrapped error strings, in reverse order
-func causeAndWraps(err error) ([]string, error) {
-	wraps := []string{}
-
-	for err != nil {
-		errmsg := err.Error()
-		cause, ok := err.(causer)
-		if !ok {
-			break
-		}
-		err = cause.Cause()
-		// a wrapped error actually consists of two nested error values, WithMessage() and WithStack()
-		// if the cause has the same error string as the outer error, ignore it
-		if err.Error() == errmsg {
-			continue
-		}
-		// remove the inner error message from the outer results in just the outer
-		wraps = append(wraps, strings.Replace(errmsg, ": "+err.Error(), "", 1))
-		errmsg = err.Error()
-
-	}
-	return wraps, err
-}
-
-func unwrapIfNeeded(err error, oe operationError) error {
+// User annotates err as a user error.
+func User(err error) error {
 	if err == nil {
 		return nil
 	}
-	_, ok := err.(causer)
-	if ok {
-		wraps, inner := causeAndWraps(err)
-		oe.inner = inner
-		err = oe
-		// rewrap the inner error in reverse order
-		for i := len(wraps) - 1; i >= 0; i-- {
-			msg := wraps[i]
-			err = pkgerrors.WithMessage(err, msg)
-		}
-		return err
+	return UserError{err}
+}
+
+// A CancelledError wraps an underlying error to annotite at as being caused by
+// the cancellation of a context. CancelledErrors are also annotated as
+// UserErrors.
+type CancelledError struct {
+	error
+}
+
+// Error returns err's underlying error string.
+func (err CancelledError) Error() string {
+	return err.error.Error()
+}
+
+// Unwrap returns err's underlying error.
+func (err CancelledError) Unwrap() error {
+	return err.error
+}
+
+// User annotates err as a context cancelled error.
+func Cancelled(err error) error {
+	if err == nil {
+		return nil
 	}
-	oe.inner = err
-	return oe
+	return CancelledError{User(err)}
 }
 
-// UserError annotates err in such a way that IsUserError() can be used further up in the callstack.
-// If err is a wrapped error, the root error will be unwrapped, annotated and rewrapped instead. The root error stack trace is preserved but any middle ones are lost.
-func UserError(err error) error {
-	return unwrapIfNeeded(err, operationError{user: true})
-}
-
-// SystemError annotates err in such a way that IsSystemError() can be used further up in the callstack.
-// If err is a wrapped error, the root error will be unwrapped, annotated and rewrapped instead. The root error stack trace is preserved but any middle ones are lost.
-func SystemError(err error) error {
-	return unwrapIfNeeded(err, operationError{system: true})
-}
-
-// IsUserError will unwrap err to the innermost error value and return whether it is a UserError.
+// IsUserError returns whether err is annotated as a user error.
 func IsUserError(err error) bool {
-	switch v := pkgerrors.Cause(err).(type) {
-	case operationError:
-		return v.user
-	default:
-		return false
-	}
+	return errors.As(err, &UserError{})
 }
 
-// IsSystemError will unwrap err to the innermost error value and return whether it is a SystemError.
+// IsCancelledError returns whether err is annotated as a context cancelled error.
+func IsCancelledError(err error) bool {
+	return errors.As(err, &CancelledError{})
+}
+
+// IsSystemError returns whether err is not annotated as a user error.
 func IsSystemError(err error) bool {
-	switch v := pkgerrors.Cause(err).(type) {
-	case operationError:
-		return v.system
-	default:
-		return false
-	}
+	return !errors.As(err, &UserError{})
 }

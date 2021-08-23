@@ -30,7 +30,7 @@ func NewFuranBuilderBackend(addrs []string, dl persistence.DataLayer, mc metrics
 	logger := log.New(logout, "", log.LstdFlags)
 	fc, err := furan.NewFuranClient(fcopts, logger, datadogServiceNamePrefix)
 	if err != nil {
-		return nil, errors.Wrap(err, "error creating Furan client")
+		return nil, fmt.Errorf("error creating Furan client: %w", err)
 	}
 	return &FuranBuilderBackend{
 		dl:  dl,
@@ -112,7 +112,7 @@ func (fib *FuranBuilderBackend) BuildImage(ctx context.Context, envName, githubR
 	close(bchan)
 
 	if buildErr != nil {
-		return errors.Wrapf(buildErr, "build failed: %v", githubRepo)
+		return fmt.Errorf("build failed: %v: %w", githubRepo, buildErr)
 	}
 	return nil
 }

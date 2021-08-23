@@ -29,7 +29,11 @@
     "source_sha": "xxxxxxx",
     "source_branch": "feature-more-spam-lol",
     "base_sha": "asdfsdfkeiekeik9",
-    "base_branch": "master"
+    "base_branch": "master",
+    "event_ids": [
+      "db20d1e7-1e0d-45c6-bfe1-4ea24b7f4159",
+      "9beb4f55-bc47-4411-b17d-78e2c0bccb25"
+    ]
   },
   {
     "name": "foo-bar-2",
@@ -61,7 +65,10 @@
     "source_sha": "93023sdjfeejkd93o",
     "source_branch": "feature-sell-moar-stuff",
     "base_sha": "393kdkd9328292k",
-    "base_branch": "master"
+    "base_branch": "master",
+    "event_ids": [
+      "c1e1e229-86d8-4d99-a3d5-62b2f6390bbe"
+    ]
   },
   {
     "name": "foo-baz",
@@ -93,7 +100,8 @@
     "source_sha": "93jdhsksjusnc839",
     "source_branch": "feature-crash-the-site",
     "base_sha": "kek9393kdkdkdkd030303ld",
-    "base_branch": "master"
+    "base_branch": "master",
+    "event_ids": []
   },
   {
     "name": "foo-baz-2",
@@ -125,7 +133,8 @@
     "source_sha": "93jdhsksjusnc839xxxxxxx",
     "source_branch": "feature-crash-the-site-2",
     "base_sha": "kek9393kdkdkdkd030303ld",
-    "base_branch": "master"
+    "base_branch": "master",
+    "event_ids": []
   },
   {
     "name": "biz-baz",
@@ -157,7 +166,8 @@
     "source_sha": "372829sskskskdkdke499393",
     "source_branch": "feature-rm-rf-slash",
     "base_sha": "393930dd91928zzbebehesh",
-    "base_branch": "master"
+    "base_branch": "master",
+    "event_ids": []
   },
   {
     "name": "biz-biz",
@@ -189,7 +199,8 @@
     "source_sha": "372829sskskskdkdke499394",
     "source_branch": "feature-rm-rf-slash",
     "base_sha": "393930dd91928zzbebehesh",
-    "base_branch": "master"
+    "base_branch": "master",
+    "event_ids": []
   },
   {
     "name": "biz-biz2",
@@ -222,6 +233,7 @@
     "source_branch": "feature-rm-rf-slash",
     "source_ref": "master",
     "base_sha": "393930dd91928zzbebehesh",
-    "base_branch": "master"
+    "base_branch": "master",
+    "event_ids": []
   }
 ]

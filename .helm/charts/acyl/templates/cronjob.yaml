@@ -47,4 +47,8 @@ spec:
               - "{{ .Values.app.cleanup.destroyed_envs_max_age }}"
               - "--event-logs-max-age"
               - "{{ .Values.app.cleanup.event_logs_max_age }}"
+            {{ if .Values.app.tiller_image }}
+              - "--tiller-image"
+              - "{{ .Values.app.tiller_image }}"
+            {{ end }}
 {{ end }}

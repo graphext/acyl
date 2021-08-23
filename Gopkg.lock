@@ -182,42 +182,6 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:1e495c638d47424ccc986819d76ef59f0a2d477814edc7f6bdb02dfacc06262c"
-  name = "github.com/aws/aws-sdk-go"
-  packages = [
-    "aws",
-    "aws/awserr",
-    "aws/awsutil",
-    "aws/client",
-    "aws/client/metadata",
-    "aws/corehandlers",
-    "aws/credentials",
-    "aws/credentials/ec2rolecreds",
-    "aws/credentials/endpointcreds",
-    "aws/credentials/stscreds",
-    "aws/defaults",
-    "aws/ec2metadata",
-    "aws/endpoints",
-    "aws/request",
-    "aws/session",
-    "aws/signer/v4",
-    "internal/shareddefaults",
-    "private/protocol",
-    "private/protocol/query",
-    "private/protocol/query/queryutil",
-    "private/protocol/rest",
-    "private/protocol/restxml",
-    "private/protocol/xml/xmlutil",
-    "service/s3",
-    "service/s3/s3iface",
-    "service/s3/s3manager",
-    "service/sts",
-  ]
-  pruneopts = ""
-  revision = "40f45e34986ba617a372d1590de273a0ca84a53d"
-
-[[projects]]
-  branch = "master"
   digest = "1:c0bec5f9b98d0bc872ff5e834fac186b807b656683bd29cb82fb207a1513fabb"
   name = "github.com/beorn7/perks"
   packages = ["quantile"]
@@ -450,7 +414,7 @@
   revision = "fc7a351a8b58b63954c6651077ab65c49eae5c22"
 
 [[projects]]
-  digest = "1:b2b28b08d8873edbf9fe8e062c02c5ef1cee973f449321f10c6ca858d77ca0c1"
+  digest = "1:4ea07ddc6d4a33df73c88c1f1e33e58120d6e9864040c14bffe0f8ae137f82d4"
   name = "github.com/dollarshaveclub/metahelm"
   packages = [
     "pkg/dag",
@@ -458,8 +422,8 @@
     "pkg/metahelm",
   ]
   pruneopts = ""
-  revision = "ef81a1501309f13f51a11ca49410d93e5f7f67cd"
-  version = "0.6.1"
+  revision = "a92ec8266953c7f8e6460594b7f3a40b02a6bf34"
+  version = "0.6.2"
 
 [[projects]]
   digest = "1:1ac97a557c4c5f6b95e634b51709f9530e661570d94bd6c5f0bbce4c7db9b52a"
@@ -552,14 +516,6 @@
   pruneopts = ""
   revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
   version = "v1.0.0"
-
-[[projects]]
-  digest = "1:eb26181e5ea224ef9d0294830a3ea3f409c6fa96b4b0d5c4ed65d933531ebcd7"
-  name = "github.com/go-ini/ini"
-  packages = ["."]
-  pruneopts = ""
-  revision = "d3de07a94d22b4a0972deb4b96d790c2c0ce8333"
-  version = "v1.28.0"
 
 [[projects]]
   digest = "1:c8052dcf3ec378a9a6bc4f00ecc10d6d5eb3cc1f8faaf6b2f70f047e8881d446"
@@ -945,14 +901,6 @@
   packages = ["."]
   pruneopts = ""
   revision = "1c35d901db3da928c72a72d8458480cc9ade058f"
-
-[[projects]]
-  digest = "1:e6f0b9e4dced4b6b5fedb810e2125a9f74dfe2ef1598c55ecb25e8b3d8f514ea"
-  name = "github.com/jmespath/go-jmespath"
-  packages = ["."]
-  pruneopts = ""
-  revision = "3433f3ea46d9f8019119e7dd41274e112a2359a9"
-  version = "0.2.2"
 
 [[projects]]
   branch = "master"
@@ -2445,11 +2393,6 @@
     "github.com/DataDog/datadog-go/statsd",
     "github.com/DavidHuie/gomigrate",
     "github.com/alecthomas/chroma/quick",
-    "github.com/aws/aws-sdk-go/aws",
-    "github.com/aws/aws-sdk-go/aws/credentials",
-    "github.com/aws/aws-sdk-go/aws/session",
-    "github.com/aws/aws-sdk-go/service/s3",
-    "github.com/aws/aws-sdk-go/service/s3/s3manager",
     "github.com/docker/cli/cli/config",
     "github.com/docker/cli/cli/config/configfile",
     "github.com/docker/docker/api/types",
@@ -2470,7 +2413,6 @@
     "github.com/gorilla/mux",
     "github.com/gorilla/securecookie",
     "github.com/gorilla/sessions",
-    "github.com/hashicorp/consul/api",
     "github.com/hashicorp/go-multierror",
     "github.com/imdario/mergo",
     "github.com/jmoiron/sqlx",

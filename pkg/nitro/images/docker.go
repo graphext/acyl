@@ -58,28 +58,28 @@ func (dbb *DockerBuilderBackend) BuildImage(ctx context.Context, envName, github
 	}
 	tdir, err := ioutil.TempDir("", "acyl-docker-builder")
 	if err != nil {
-		return errors.Wrap(err, "error getting temp dir")
+		return fmt.Errorf("error getting temp dir: %w", err)
 	}
 	defer os.RemoveAll(tdir)
 	dbb.log(ctx, "getting repo contents for %v", githubRepo)
 	tgz, err := dbb.RC.GetRepoArchive(ctx, githubRepo, ref)
 	if err != nil {
-		return errors.Wrap(err, "error getting repo archive")
+		return fmt.Errorf("error getting repo archive: %w", err)
 	}
 	defer os.Remove(tgz)
 	dbb.log(ctx, "unarchiving repo contents: %v", githubRepo)
 	if err := archiver.Unarchive(tgz, tdir); err != nil {
-		return errors.Wrap(err, "error unarchiving repo contents")
+		return fmt.Errorf("error unarchiving repo contents: %w", err)
 	}
 	// verify that there's exactly one subdirectory in the unarchived contents
 	f, err := os.Open(tdir)
 	if err != nil {
-		return errors.Wrap(err, "error opening temp dir")
+		return fmt.Errorf("error opening temp dir: %w", err)
 	}
 	fi, err := f.Readdir(-1)
 	f.Close()
 	if err != nil {
-		return errors.Wrap(err, "error reading temp dir")
+		return fmt.Errorf("error reading temp dir: %w", err)
 	}
 	if len(fi) != 1 {
 		return fmt.Errorf("expected one path in repo archive but got %v", len(fi))
@@ -90,12 +90,12 @@ func (dbb *DockerBuilderBackend) BuildImage(ctx context.Context, envName, github
 	// get all files within the top-level directory
 	f, err = os.Open(filepath.Join(tdir, fi[0].Name()))
 	if err != nil {
-		return errors.Wrap(err, "error opening top-level repo archive dir")
+		return fmt.Errorf("error opening top-level repo archive dir: %w", err)
 	}
 	fi, err = f.Readdir(-1)
 	f.Close()
 	if err != nil {
-		return errors.Wrap(err, "error reading top-level repo archive dir")
+		return fmt.Errorf("error reading top-level repo archive dir: %w", err)
 	}
 	files := make([]string, len(fi))
 	for i := range fi {
@@ -104,19 +104,19 @@ func (dbb *DockerBuilderBackend) BuildImage(ctx context.Context, envName, github
 	dbb.log(ctx, "building context tar for %v", githubRepo)
 	bcontents, err := ioutil.TempFile("", "acyl-docker-builder-context-*.tar")
 	if err != nil {
-		return errors.Wrap(err, "error creating tar temp file")
+		return fmt.Errorf("error creating tar temp file: %w", err)
 	}
 	bcontents.Close()
 	tar := archiver.NewTar()
 	tar.ContinueOnError = true // ignore things like broken symlinks
 	tar.OverwriteExisting = true
 	if err := tar.Archive(files, bcontents.Name()); err != nil {
-		return errors.Wrap(err, "error writing tar file")
+		return fmt.Errorf("error writing tar file: %w", err)
 	}
 	defer os.Remove(bcontents.Name())
 	f, err = os.Open(bcontents.Name())
 	if err != nil {
-		return errors.Wrap(err, "error opening tar")
+		return fmt.Errorf("error opening tar: %w", err)
 	}
 	defer f.Close()
 	bargs := make(map[string]*string, len(ops.BuildArgs))
@@ -144,11 +144,11 @@ func (dbb *DockerBuilderBackend) BuildImage(ctx context.Context, envName, github
 	resp, err := dbb.DC.ImageBuild(ctx, f, opts)
 	ticker.Stop()
 	if err != nil {
-		return errors.Wrap(err, "error starting image build")
+		return fmt.Errorf("error starting image build: %w", err)
 	}
 	err = handleOutput(resp.Body)
 	if err != nil {
-		return errors.Wrap(err, "error performing build")
+		return fmt.Errorf("error performing build: %w", err)
 	}
 	if dbb.Push {
 		rsl := strings.Split(imageRepo, "/")
@@ -189,11 +189,11 @@ func (dbb *DockerBuilderBackend) BuildImage(ctx context.Context, envName, github
 		resp, err := dbb.DC.ImagePush(ctx, imageRepo+":"+ref, opts)
 		ticker.Stop()
 		if err != nil {
-			return errors.Wrap(err, "error starting image push")
+			return fmt.Errorf("error starting image push: %w", err)
 		}
 		err = handleOutput(resp)
 		if err != nil {
-			return errors.Wrap(err, "error pushing image")
+			return fmt.Errorf("error pushing image: %w", err)
 		}
 		dbb.log(ctx, "image pushed: %v", imageRepo+":"+ref)
 	}

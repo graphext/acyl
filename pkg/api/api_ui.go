@@ -17,12 +17,11 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gorilla/mux"
-	"github.com/gorilla/sessions"
-
 	"github.com/dollarshaveclub/acyl/pkg/config"
 	"github.com/dollarshaveclub/acyl/pkg/ghclient"
 	"github.com/dollarshaveclub/acyl/pkg/models"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -34,7 +33,7 @@ import (
 
 type uiBranding struct {
 	config.UIBrandingConfig
-	FaviconType string
+	FaviconType  string
 }
 
 // OAuthConfig models the configuration needed to support a GitHub OAuth authn/authz flow
@@ -96,6 +95,7 @@ var viewPaths = map[string]string{
 	"home":       path.Join("views", "home.html"),
 	"env":        path.Join("views", "env.html"),
 	"denied":     path.Join("views", "denied.html"),
+	"help":       path.Join("views", "help.html"),
 }
 
 func newSessionsCookieStore(oauthCfg OAuthConfig) sessions.Store {
@@ -249,6 +249,7 @@ func (api *uiapi) register(r *muxtrace.Router) error {
 	r.HandleFunc(urlPath("/event/status"), middlewareChain(api.statusHandler, api.authenticate)).Methods("GET")
 	r.HandleFunc(urlPath("/home"), middlewareChain(api.homeHandler, api.authenticate)).Methods("GET")
 	r.HandleFunc(urlPath("/env/{envname}"), middlewareChain(api.envHandler, api.authenticate)).Methods("GET")
+	r.HandleFunc(urlPath("/help"), middlewareChain(api.helpHandler, api.authenticate)).Methods("GET")
 
 	// unauthenticated OAuth callback
 	r.HandleFunc(urlPath("/oauth/callback"), middlewareChain(api.authCallbackHandler)).Methods("GET")
@@ -259,6 +260,9 @@ func (api *uiapi) register(r *muxtrace.Router) error {
 
 	// static assets
 	r.PathPrefix(urlPath("/static/")).Handler(http.StripPrefix(urlPath("/static/"), http.FileServer(http.Dir(path.Join(api.assetsPath, "assets")))))
+
+	// swagger docs
+	r.PathPrefix(urlPath("/swagger/")).Handler(http.StripPrefix(urlPath("/swagger/"), http.FileServer(http.Dir(path.Join(api.assetsPath, "swagger")))))
 
 	return nil
 }
@@ -754,6 +758,16 @@ func (api *uiapi) envHandler(w http.ResponseWriter, r *http.Request) {
 		td.RenderActions = true
 	}
 	api.render(w, "env", &td)
+}
+
+func (api *uiapi) helpHandler(w http.ResponseWriter, r *http.Request) {
+	uis, err := getSessionFromContext(r.Context())
+	if err != nil {
+		api.rlogger(r).Logf("error getting ui session: %v", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	api.render(w, "help", api.defaultBaseTemplateData(&uis))
 }
 
 func (api *uiapi) deniedHandler(w http.ResponseWriter, r *http.Request) {
