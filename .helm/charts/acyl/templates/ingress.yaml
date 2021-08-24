@@ -13,10 +13,7 @@ metadata:
 
 spec:
   rules:
-    {{- $serviceName := .Values.service.name -}}
-    {{- $servicePort := .Values.service.internalPort -}}
-    {{- range $host := .Values.ingress.hosts }}
-    - host: {{ $host }}
+    - host: {{ .Values.env_name }}-{{ .Values.ingress.argo_host }}
       http:
         paths:
           - path: /
