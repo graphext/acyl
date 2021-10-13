@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -66,14 +67,50 @@ var serverCmd = &cobra.Command{
 	},
 }
 
+var mockDataFile, mockUser string
+var mockRepos []string
+var readOnly bool
+
+func addUIFlags(cmd *cobra.Command) {
+	brj, err := json.Marshal(&config.DefaultUIBranding)
+	if err != nil {
+		log.Fatalf("error marshaling default UI branding: %v", err)
+	}
+	// UI path precendence:
+	// 1. /opt/ui  (HIGHEST) - we're probably running in a Docker container
+	// 2. ./ui - running in the root of the git repo, use what's locally here
+	// 3. XDG_DATA_DIRS[0]/acyl/ui - Unix-like OS with preference set
+	// 4. /usr/local/share/acyl/ui - No preference set, setting this and hoping for the best
+	var uipath string
+	_, err = os.Stat("/opt/ui")
+	_, err2 := os.Stat("./ui")
+	switch {
+	case err == nil:
+		uipath = "/opt/ui"
+	case err2 == nil:
+		uipath = "./ui"
+	case os.Getenv("XDG_DATA_DIRS") != "":
+		uipath = filepath.Join(strings.SplitN(os.Getenv("XDG_DATA_DIRS"), ":", 2)[0], "acyl", "ui")
+	default:
+		uipath = "/usr/local/share/acyl/ui"
+	}
+	cmd.PersistentFlags().StringVar(&serverConfig.UIBaseURL, "ui-base-url", "", "External base URL (https://somedomain.com) for UI links")
+	cmd.PersistentFlags().StringVar(&serverConfig.UIPath, "ui-path", uipath, "Local filesystem path to UI assets")
+	cmd.PersistentFlags().StringVar(&serverConfig.UIBaseRoute, "ui-base-route", "/ui", "Base prefix for UI HTTP routes")
+	cmd.PersistentFlags().StringVar(&serverConfig.UIBrandingJSON, "ui-branding", string(brj), "Branding JSON configuration (see doc)")
+	cmd.PersistentFlags().BoolVar(&githubConfig.OAuth.Enforce, "ui-enforce-oauth", false, "Enforce GitHub App OAuth authn/authz for UI routes")
+	cmd.PersistentFlags().StringVar(&mockDataFile, "mock-data", "testdata/data.json", "Path to mock data file")
+	cmd.PersistentFlags().StringVar(&mockUser, "mock-user", "bobsmith", "Mock username (for sessions)")
+	cmd.PersistentFlags().StringSliceVar(&mockRepos, "mock-repos", []string{"acme/microservice", "acme/widgets", "acme/customers"}, "Mock repo read write permissions (for session user)")
+	cmd.PersistentFlags().BoolVar(&readOnly, "mock-read-only", false, "Mock repo override to read only permissions (for session user)")
+}
+
 func init() {
 	serverCmd.PersistentFlags().UintVar(&serverConfig.HTTPSPort, "https-port", 4000, "REST HTTP(S) TCP port")
 	serverCmd.PersistentFlags().StringVar(&serverConfig.HTTPSAddr, "https-addr", "0.0.0.0", "REST HTTP(S) listen address")
 	serverCmd.PersistentFlags().BoolVar(&serverConfig.DisableTLS, "disable-tls", false, "Disable TLS for the REST HTTP(S) server")
 	serverCmd.PersistentFlags().StringVar(&githubConfig.TypePath, "repo-type-path", "acyl.yml", "Relative path within the target repo to look for the type definition")
 	serverCmd.PersistentFlags().StringVar(&serverConfig.WordnetPath, "wordnet-path", "/opt/words.json.gz", "Path to gzip-compressed JSON wordnet file")
-	serverCmd.PersistentFlags().StringSliceVar(&serverConfig.FuranAddrs, "furan-addrs", []string{}, "Furan hosts")
-	serverCmd.PersistentFlags().BoolVar(&serverConfig.EnableFuran2, "use-furan2", false, "Enable Furan 2 image builder")
 	serverCmd.PersistentFlags().BoolVar(&serverConfig.Furan2SkipVerifyTLS, "furan2-disable-tls-verification", false, "Disable Furan 2 TLS verification (FOR TESTING PURPOSES ONLY)")
 	serverCmd.PersistentFlags().StringVar(&serverConfig.Furan2Addr, "furan2-addr", "", "Furan2 host:port")
 	serverCmd.PersistentFlags().StringVar(&slackConfig.Channel, "slack-channel", "dyn-qa-notifications", "Slack channel for notifications")
@@ -178,36 +215,25 @@ func server(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Furan vs Furan 2
-	var ibb images.BuilderBackend
-	if serverConfig.EnableFuran2 {
-		// we need an *installation* github client for the furan 2 builder
-		rci, err := ghclient.NewGithubInstallationClient(githubConfig)
-		if err != nil {
-			log.Fatalf("error getting github installation client: %v", err)
-		}
-		var f2tls string
-		if serverConfig.Furan2SkipVerifyTLS {
-			f2tls = " (TLS verification DISABLED! THIS IS INSECURE!)"
-		}
-		log.Printf("using furan2 at %v for image builds%v", serverConfig.Furan2Addr, f2tls)
-		fbb, err := images.NewFuran2BuilderBackend(serverConfig.Furan2Addr, serverConfig.Furan2APIKey, int64(githubConfig.OAuth.AppInstallationID), serverConfig.Furan2SkipVerifyTLS, dl, rci, mc)
-		if err != nil {
-			log.Fatalf("error getting Furan 2 image builder backend: %v", err)
-		}
-		ibb = fbb
-	} else {
-		log.Printf("falling back to legacy furan 1 at %v for image builds", serverConfig.FuranAddrs)
-		fbb, err := images.NewFuranBuilderBackend(serverConfig.FuranAddrs, dl, mc, os.Stderr, datadogServiceName)
-		if err != nil {
-			log.Fatalf("error getting Furan image builder backend: %v", err)
-		}
-		ibb = fbb
+	// Furan 2
+	// we need an *installation* github client for the furan 2 builder
+	rci, err := ghclient.NewGithubInstallationClient(githubConfig)
+	if err != nil {
+		log.Fatalf("error getting github installation client: %v", err)
+	}
+	var f2tls string
+	if serverConfig.Furan2SkipVerifyTLS {
+		f2tls = " (TLS verification DISABLED! THIS IS INSECURE!)"
+	}
+	log.Printf("using furan2 at %v for image builds%v", serverConfig.Furan2Addr, f2tls)
+	fbb, err := images.NewFuran2BuilderBackend(serverConfig.Furan2Addr, serverConfig.Furan2APIKey, int64(githubConfig.OAuth.AppInstallationID), serverConfig.Furan2SkipVerifyTLS, dl, rci, mc)
+	if err != nil {
+		log.Fatalf("error getting Furan 2 image builder backend: %v", err)
 	}
 	ib := &images.ImageBuilder{
 		DL:      dl,
 		MC:      nmc,
-		Backend: ibb,
+		Backend: fbb,
 	}
 
 	fs := osfs.New("")
@@ -323,17 +349,15 @@ func server(cmd *cobra.Command, args []string) {
 		DatadogServiceName: apiServiceName,
 		KubernetesReporter: ci,
 	}
-	if serverConfig.EnableFuran2 {
-		fc, err := furan.New(furan.Options{
-			Address:               serverConfig.Furan2Addr,
-			APIKey:                serverConfig.Furan2APIKey,
-			TLSInsecureSkipVerify: serverConfig.Furan2SkipVerifyTLS,
-		})
-		if err != nil {
-			log.Fatalf("error creating Furan 2 client: %v", err)
-		}
-		deps.Furan2Client = fc
+	fc, err := furan.New(furan.Options{
+		Address:               serverConfig.Furan2Addr,
+		APIKey:                serverConfig.Furan2APIKey,
+		TLSInsecureSkipVerify: serverConfig.Furan2SkipVerifyTLS,
+	})
+	if err != nil {
+		log.Fatalf("error creating Furan 2 client: %v", err)
 	}
+	deps.Furan2Client = fc
 	regops := []api.RegisterOption{
 		api.WithAPIKeys(serverConfig.APIKeys),
 		api.WithUIBaseURL(serverConfig.UIBaseURL),

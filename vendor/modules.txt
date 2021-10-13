@@ -170,9 +170,6 @@ github.com/docker/go-connections/tlsconfig
 github.com/docker/go-metrics
 # github.com/docker/go-units v0.4.0
 github.com/docker/go-units
-# github.com/dollarshaveclub/furan v0.6.1-0.20210604153750-8def5a45ce21
-## explicit
-github.com/dollarshaveclub/furan/rpcclient
 # github.com/dollarshaveclub/furan/v2 v2.0.3
 ## explicit
 github.com/dollarshaveclub/furan/v2/pkg/client
