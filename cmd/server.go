@@ -49,7 +49,6 @@ var k8sGroupBindingsStr, k8sSecretsStr, k8sPrivilegedReposStr string
 
 var pgConfig config.PGConfig
 var logger *log.Logger
-var failureTemplatePath string
 var dogstatsdAddr, dogstatsdTags string
 var datadogServiceName, datadogTracingAgentAddr string
 var reaperLockKey int64
@@ -90,7 +89,6 @@ func init() {
 	serverCmd.PersistentFlags().StringVar(&k8sGroupBindingsStr, "k8s-group-bindings", "", "optional k8s RBAC group bindings (comma-separated) for new environment namespaces in GROUP1=CLUSTER_ROLE1,GROUP2=CLUSTER_ROLE2 format (ex: users=edit) (Nitro)")
 	serverCmd.PersistentFlags().StringVar(&k8sSecretsStr, "k8s-secret-injections", "", "optional k8s secret injections (comma-separated) for new environment namespaces in SECRET_NAME=VAULT_ID (Vault path using secrets mapping) format. Secret value in Vault must be a JSON-encoded object with two keys: 'data' (map of string to base64-encoded bytes), 'type' (string). (Nitro)")
 	serverCmd.PersistentFlags().StringVar(&k8sPrivilegedReposStr, "k8s-privileged-repo-whitelist", "dollarshaveclub/acyl", "optional comma-separated whitelist of GitHub repositories whose environment service accounts will be allowed cluster-admin privileges (Nitro)")
-	serverCmd.PersistentFlags().StringVar(&failureTemplatePath, "failure-template-path", "/opt/html/failedenv.html.tmpl", "path to HTML failure report template (if missing, failure reports will be disabled")
 	serverCmd.PersistentFlags().StringVarP(&dogstatsdAddr, "dogstatsd-addr", "q", "127.0.0.1:8125", "Address of dogstatsd for metrics")
 	serverCmd.PersistentFlags().StringVar(&dogstatsdTags, "dogstatsd-tags", "", "Comma-separated list of tags to add to dogstatsd metrics (TAG:VALUE)")
 	serverCmd.PersistentFlags().StringVar(&datadogTracingAgentAddr, "datadog-tracing-agent-addr", "127.0.0.1:8126", "Address of datadog tracing agent")
@@ -182,7 +180,7 @@ func server(cmd *cobra.Command, args []string) {
 	if err := k8sConfig.ProcessSecretInjections(sc, k8sSecretsStr); err != nil {
 		log.Fatalf("error in k8s secret injections: %v", err)
 	}
-	ci, err := metahelm.NewChartInstaller(ib, dl, fs, nmc, k8sConfig.GroupBindings, k8sConfig.PrivilegedRepoWhitelist, k8sConfig.SecretInjections, tillerConfig, k8sClientConfig.JWTPath, true)
+	ci, err := metahelm.NewChartInstaller(ib, dl, fs, nmc, k8sConfig.GroupBindings, k8sConfig.PrivilegedRepoWhitelist, k8sConfig.SecretInjections, k8sClientConfig.JWTPath, true, helmClientConfig)
 	if err != nil {
 		log.Fatalf("error getting metahelm chart installer: %v", err)
 	}

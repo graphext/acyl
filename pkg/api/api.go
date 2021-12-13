@@ -11,6 +11,7 @@ import (
 	"github.com/dollarshaveclub/acyl/pkg/config"
 	"github.com/dollarshaveclub/acyl/pkg/ghclient"
 	"github.com/dollarshaveclub/acyl/pkg/ghevent"
+	"github.com/dollarshaveclub/acyl/pkg/models"
 	"github.com/dollarshaveclub/acyl/pkg/nitro/metahelm"
 	"github.com/dollarshaveclub/acyl/pkg/persistence"
 	"github.com/dollarshaveclub/acyl/pkg/spawner"
@@ -18,7 +19,13 @@ import (
 	muxtrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gorilla/mux"
 )
 
-const DefaultPodContainerLogLines = 100
+const (
+	DefaultPodContainerLogLines = 100
+	MinAPIKeyPermissionLevel    = models.ReadOnlyPermission
+	MaxAPIKeyPermissionLevel    = models.WritePermission
+	MaxAPIKeysLimit             = 10
+)
+
 
 type apiBase struct {
 	logger *log.Logger

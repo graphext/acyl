@@ -50,9 +50,6 @@ func (fi *FakeInstaller) BuildAndInstallCharts(ctx context.Context, newenv *EnvI
 		if err := ci.writeK8sEnvironment(ctx, newenv, "nitro-1234-"+newenv.Env.Name); err != nil {
 			return err
 		}
-		if err := fi.DL.UpdateK8sEnvTillerAddr(ctx, newenv.Env.Name, "10.10.10.10:1234"); err != nil {
-			return err
-		}
 		releases := getReleases(chartsLocation)
 		return ci.writeReleaseNames(ctx, releases, "fake-namespace", newenv)
 	}
@@ -111,11 +108,17 @@ func (fkr FakeKubernetesReporter) GetPodList(ctx context.Context, ns string) (ou
 				nReady += 1
 			}
 		}
+		rc := int32(0)
+		if p.Status.Size() != 0 &&
+			len(p.Status.ContainerStatuses) > 0 &&
+			p.Status.ContainerStatuses[0].Size() != 0 {
+			rc = p.Status.ContainerStatuses[0].RestartCount
+		}
 		out = append(out, K8sPod{
 			Name:     p.Name,
 			Ready:    fmt.Sprintf("%v/%v", nReady, nContainers),
 			Status:   string(p.Status.Phase),
-			Restarts: p.Status.ContainerStatuses[0].RestartCount,
+			Restarts: rc,
 			Age:      age,
 		})
 	}
@@ -156,16 +159,29 @@ func stubPodData(ns string) *v1.PodList {
 	pod.Status.Phase = "Running"
 	pod.CreationTimestamp.Time = time.Now().UTC().Add(-3 * time.Hour).Add(-37 * time.Minute).Add(-33 * time.Second)
 
-	podContainerStatus.Name = "bar-app"
+	pod2ContainerStatus := v1.ContainerStatus{
+		Name:         "bar-app",
+		RestartCount: 1,
+		Ready:        true,
+	}
+	pod2NotReadyContainerStatus := v1.ContainerStatus{
+		Name:         "bar-app-not-ready",
+		RestartCount: 4,
+		Ready: false,
+	}
 	pod2 := v1.Pod{
 		Status: v1.PodStatus{
-			ContainerStatuses: []v1.ContainerStatus{podContainerStatus},
-			Phase:             "Running",
-			PodIP:             "10.0.0.2",
+			ContainerStatuses: []v1.ContainerStatus{
+				pod2ContainerStatus,
+				pod2NotReadyContainerStatus,
+			},
+			Phase: "Pending",
+			PodIP: "10.0.0.2",
 		},
 		Spec: v1.PodSpec{
 			Containers: []v1.Container{
-				{Name: podContainerStatus.Name},
+				{Name: pod2ContainerStatus.Name},
+				{Name: pod2NotReadyContainerStatus.Name},
 			},
 		},
 	}

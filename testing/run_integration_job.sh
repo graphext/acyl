@@ -19,6 +19,7 @@ sed -e "s/{{TAG}}/${TAG}/g; s/{{NAME}}/${JOBNAME}/g" < ./testing/integration-tes
 set -x
 
 kubectl config set-context acyl-nitro-integration
+kubectl version
 kubectl apply -f ~/job.yaml
 sleep 1
 kubectl wait "job/${JOBNAME}" --for condition=Complete --timeout=300s

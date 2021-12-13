@@ -297,7 +297,7 @@ func setupNitro(dl persistence.DataLayer, useGHToken bool) (spawner.EnvironmentS
 	fs := osfs.New("")
 	mg := &meta.DataGetter{RC: rc, FS: fs}
 	ib := &images.FakeImageBuilder{BatchCompletedFunc: func(envname, repo string) (bool, error) { return true, nil }}
-	ci, err := metahelm.NewChartInstaller(ib, dl, fs, mc, map[string]string{}, []string{}, map[string]config.K8sSecret{}, tillerConfig, k8sClientConfig.JWTPath, false)
+	ci, err := metahelm.NewChartInstaller(ib, dl, fs, mc, map[string]string{}, []string{}, map[string]config.K8sSecret{}, k8sClientConfig.JWTPath, false, helmClientConfig)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "error getting metahelm chart installer")
 	}
@@ -318,6 +318,7 @@ type testData struct {
 	QAEnvironments  []models.QAEnvironment         `json:"qa_environments"`
 	K8sEnvironments []models.KubernetesEnvironment `json:"kubernetes_environments"`
 	HelmReleases    []models.HelmRelease           `json:"helm_releases"`
+	APIKeys         []models.APIKey                `json:"api_keys"`
 }
 
 func loadData() (persistence.DataLayer, error) {
@@ -329,7 +330,7 @@ func loadData() (persistence.DataLayer, error) {
 	if err := json.Unmarshal(d, &td); err != nil {
 		return nil, errors.Wrap(err, "error unmarshaling data file")
 	}
-	return persistence.NewPopulatedFakeDataLayer(td.QAEnvironments, td.K8sEnvironments, td.HelmReleases), nil
+	return persistence.NewPopulatedFakeDataLayer(td.QAEnvironments, td.K8sEnvironments, td.HelmReleases, td.APIKeys), nil
 }
 
 type testWebhooks struct {

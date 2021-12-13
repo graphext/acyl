@@ -58,7 +58,7 @@ func NewFakeDataLayer() *FakeDataLayer {
 }
 
 // NewPopulatedFakeDataLayer returns a FakeDataLayer populated with the supplied data. Input data is not checked for consistency.
-func NewPopulatedFakeDataLayer(qaenvs []models.QAEnvironment, k8senvs []models.KubernetesEnvironment, helmreleases []models.HelmRelease) *FakeDataLayer {
+func NewPopulatedFakeDataLayer(qaenvs []models.QAEnvironment, k8senvs []models.KubernetesEnvironment, helmreleases []models.HelmRelease, apikeys []models.APIKey) *FakeDataLayer {
 	fd := NewFakeDataLayer()
 	for i := range qaenvs {
 		fd.data.d[qaenvs[i].Name] = &qaenvs[i]
@@ -68,6 +68,9 @@ func NewPopulatedFakeDataLayer(qaenvs []models.QAEnvironment, k8senvs []models.K
 	}
 	for _, hr := range helmreleases {
 		fd.data.helm[hr.EnvName] = append(fd.data.helm[hr.EnvName], hr)
+	}
+	for i := range apikeys {
+		fd.data.apikeys[apikeys[i].ID] = &apikeys[i]
 	}
 	return fd
 }
@@ -604,12 +607,99 @@ func (fdl *FakeDataLayer) Search(ctx context.Context, opts models.EnvSearchParam
 	return envs, nil
 }
 
+func (fdl *FakeDataLayer) SearchEnvsForUser(ctx context.Context, user string, opts models.EnvSearchParameters) ([]QAEnvironment, error) {
+	if isCancelled(ctx) {
+		return nil, ctx.Err()
+	}
+	fdl.doDelay()
+	if opts.User == "" {
+		return nil, fmt.Errorf("search envs for user requires username")
+	}
+	if opts.Pr != 0 && opts.Repo == "" {
+		return nil, fmt.Errorf("search by PR requires repo name")
+	}
+	if opts.TrackingRef != "" && opts.Repo == "" {
+		return nil, fmt.Errorf("search by tracking ref requires repo name")
+	}
+	if opts.Repo != "" && len(opts.Repos) > 0 {
+		return nil, fmt.Errorf("cannot search by repo and repos simultaneously")
+	}
+	if opts.Status != models.UnknownStatus && len(opts.Statuses) > 0 {
+		return nil, fmt.Errorf("cannot search by status and statuses simultaneously")
+	}
+	filter := func(envs []models.QAEnvironment, cf func(e models.QAEnvironment) bool) []models.QAEnvironment {
+		pres := []models.QAEnvironment{}
+		for _, e := range envs {
+			if cf(e) {
+				pres = append(pres, e)
+			}
+		}
+		return pres
+	}
+	envs, _ := fdl.GetQAEnvironmentsByUser(ctx, opts.User)
+	if opts.Pr != 0 {
+		envs = filter(envs, func(e models.QAEnvironment) bool { return e.PullRequest == opts.Pr && e.Repo == opts.Repo })
+	}
+	if opts.Repo != "" {
+		envs = filter(envs, func(e models.QAEnvironment) bool { return e.Repo == opts.Repo })
+	}
+	if len(opts.Repos) > 0 {
+		envs = filter(envs, func(e models.QAEnvironment) bool {
+			for _, r := range opts.Repos {
+				if e.Repo == r {
+					return true
+				}
+			}
+			return false
+		})
+	}
+	if opts.SourceSHA != "" {
+		envs = filter(envs, func(e models.QAEnvironment) bool { return e.SourceSHA == opts.SourceSHA })
+	}
+	if opts.SourceBranch != "" {
+		envs = filter(envs, func(e models.QAEnvironment) bool { return e.SourceBranch == opts.SourceBranch })
+	}
+	if opts.Status != models.UnknownStatus {
+		envs = filter(envs, func(e models.QAEnvironment) bool { return e.Status == opts.Status })
+	}
+	if len(opts.Statuses) > 0 {
+		envs = filter(envs, func(e models.QAEnvironment) bool {
+			for _, s := range opts.Statuses {
+				if e.Status == s {
+					return true
+				}
+			}
+			return false
+		})
+	}
+	if opts.CreatedSince != 0 {
+		envs = filter(envs, func(e models.QAEnvironment) bool { return e.Created.After(time.Now().UTC().Add(-opts.CreatedSince)) })
+	}
+	if opts.TrackingRef != "" {
+		envs = filter(envs, func(e models.QAEnvironment) bool { return e.SourceRef == opts.TrackingRef })
+	}
+	return envs, nil
+}
+
 func (fdl *FakeDataLayer) GetMostRecent(ctx context.Context, n uint) ([]QAEnvironment, error) {
 	if isCancelled(ctx) {
 		return nil, ctx.Err()
 	}
 	fdl.doDelay()
 	envs, _ := fdl.GetQAEnvironments(ctx)
+	sort.Slice(envs, func(i int, j int) bool { return envs[i].Created.After(envs[j].Created) })
+	if int(n) > len(envs) {
+		return envs, nil
+	}
+	return envs[0:n], nil
+}
+
+func (fdl *FakeDataLayer) GetMostRecentForUser(ctx context.Context, user string, n uint) ([]QAEnvironment, error) {
+	if isCancelled(ctx) {
+		return nil, ctx.Err()
+	}
+	fdl.doDelay()
+	envs, _ := fdl.GetQAEnvironmentsByUser(ctx, user)
 	sort.Slice(envs, func(i int, j int) bool { return envs[i].Created.After(envs[j].Created) })
 	if int(n) > len(envs) {
 		return envs, nil
@@ -743,21 +833,6 @@ func (fdl *FakeDataLayer) DeleteK8sEnv(ctx context.Context, name string) error {
 	return nil
 }
 
-func (fdl *FakeDataLayer) UpdateK8sEnvTillerAddr(ctx context.Context, envname, taddr string) error {
-	if isCancelled(ctx) {
-		return ctx.Err()
-	}
-	fdl.doDelay()
-	fdl.data.Lock()
-	defer fdl.data.Unlock()
-	env, ok := fdl.data.k8s[envname]
-	if ok {
-		env.TillerAddr = taddr
-		fdl.data.k8s[envname] = env
-	}
-	return nil
-}
-
 func (fdl *FakeDataLayer) UpdateK8sEnvConfigSignature(ctx context.Context, name string, confSig [32]byte) error {
 	if isCancelled(ctx) {
 		return ctx.Err()
@@ -819,10 +894,6 @@ func (fdl *FakeDataLayer) GetEventLogsByEnvName(name string) ([]models.EventLog,
 		}
 	}
 	return out, nil
-}
-
-func (fdl *FakeDataLayer) GetEventLogsWithStatusByEnvName(name string) ([]models.EventLog, error) {
-	return fdl.GetEventLogsByEnvName(name)
 }
 
 func (fdl *FakeDataLayer) GetEventLogsByRepoAndPR(repo string, pr uint) ([]models.EventLog, error) {
@@ -1173,7 +1244,7 @@ func (fdl *FakeDataLayer) DeleteExpiredUISessions() (uint, error) {
 	return uint(len(rmkeys)), nil
 }
 
-func (fdl *FakeDataLayer) CreateAPIKey(ctx context.Context, permissionLevel models.PermissionLevel, name, description, githubUser string) (uuid.UUID, error) {
+func (fdl *FakeDataLayer) CreateAPIKey(ctx context.Context, permissionLevel models.PermissionLevel, description, githubUser string) (uuid.UUID, error) {
 	fdl.doDelay()
 	fdl.data.Lock()
 	defer fdl.data.Unlock()
@@ -1181,61 +1252,82 @@ func (fdl *FakeDataLayer) CreateAPIKey(ctx context.Context, permissionLevel mode
 	if err != nil {
 		return uuid.Nil, errors.Wrap(err, "error creating new random uuid")
 	}
-	key := &models.APIKey{
+	token, err := uuid.NewRandom()
+	if err != nil {
+		return uuid.Nil, errors.Wrap(err, "error creating new random uuid")
+	}
+	ak := &models.APIKey{
 		ID:              id,
 		Created:         time.Now().UTC(),
-		LastUsed:        pq.NullTime{Time: time.Now().UTC(), Valid: true},
+		LastUsed:        pq.NullTime{Time: time.Time{}, Valid: false},
 		PermissionLevel: permissionLevel,
-		Name:            name,
 		Description:     description,
 		GitHubUser:      githubUser,
+		Token:           token,
 	}
-	fdl.data.apikeys[id] = key
-	return id, nil
+	fdl.data.apikeys[id] = ak
+	return token, nil
 }
 
-func (fdl *FakeDataLayer) GetAPIKeyById(ctx context.Context, id uuid.UUID) (*models.APIKey, error) {
+func (fdl *FakeDataLayer) GetAPIKeyByToken(ctx context.Context, token uuid.UUID) (*models.APIKey, error) {
 	fdl.doDelay()
 	fdl.data.RLock()
 	defer fdl.data.RUnlock()
-	out := models.APIKey{}
+	ak := &models.APIKey{}
+	for _, v := range fdl.data.apikeys {
+		if v.Token == token {
+			ak = v
+		}
+	}
+	if ak.Token == uuid.Nil {
+		return nil, nil
+	}
+	return ak, nil
+}
+
+func (fdl *FakeDataLayer) GetAPIKeyByID(ctx context.Context, id uuid.UUID) (*models.APIKey, error) {
+	fdl.doDelay()
+	fdl.data.RLock()
+	defer fdl.data.RUnlock()
+	ak := &models.APIKey{}
 	ak, ok := fdl.data.apikeys[id]
 	if !ok {
 		return nil, nil
 	}
-	out = *ak
-	return &out, nil
+	return ak, nil
 }
 
 func (fdl *FakeDataLayer) GetAPIKeysByGithubUser(ctx context.Context, githubUser string) ([]*models.APIKey, error) {
 	fdl.doDelay()
 	fdl.data.RLock()
 	defer fdl.data.RUnlock()
-	var keys []*models.APIKey
-	for _, v := range fdl.data.apikeys{
-		if v.GitHubUser == githubUser{
-			keys = append(keys, v)
+	var aks []*models.APIKey
+	for _, v := range fdl.data.apikeys {
+		if v.GitHubUser == githubUser {
+			aks = append(aks, v)
 		}
 	}
-	if len(keys) == 0 {
+	if len(aks) == 0 {
 		return nil, nil
 	}
-	return keys, nil
+	return aks, nil
 }
 
-func (fdl *FakeDataLayer) UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID) error {
+func (fdl *FakeDataLayer) UpdateAPIKeyLastUsed(ctx context.Context, token uuid.UUID) error {
 	fdl.doDelay()
 	fdl.data.Lock()
 	defer fdl.data.Unlock()
-	ak, ok := fdl.data.apikeys[id]
-	if !ok {
-		return nil
+	ak := &models.APIKey{}
+	for _, v := range fdl.data.apikeys {
+		if v.Token == token {
+			ak = v
+		}
 	}
 	ak.LastUsed = pq.NullTime{Time: time.Now().UTC(), Valid: true}
 	return nil
 }
 
-func (fdl *FakeDataLayer) DeleteAPIKey(ctx context.Context, id uuid.UUID) error {
+func (fdl *FakeDataLayer) DeleteAPIKeyByID(ctx context.Context, id uuid.UUID) error {
 	fdl.doDelay()
 	fdl.data.Lock()
 	defer fdl.data.Unlock()

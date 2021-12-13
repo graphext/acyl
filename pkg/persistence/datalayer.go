@@ -38,7 +38,9 @@ type DataLayer interface {
 	SetAminoKubernetesNamespace(ctx context.Context, name, namespace string) error
 	AddEvent(context.Context, string, string) error
 	Search(ctx context.Context, opts models.EnvSearchParameters) ([]QAEnvironment, error)
+	SearchEnvsForUser(ctx context.Context, user string, opts models.EnvSearchParameters) ([]QAEnvironment, error)
 	GetMostRecent(ctx context.Context, n uint) ([]QAEnvironment, error)
+	GetMostRecentForUser(ctx context.Context, user string, n uint) ([]QAEnvironment, error)
 	Close() error
 	HelmDataLayer
 	K8sEnvDataLayer
@@ -61,7 +63,6 @@ type K8sEnvDataLayer interface {
 	GetK8sEnvsByNamespace(ctx context.Context, ns string) ([]models.KubernetesEnvironment, error)
 	CreateK8sEnv(ctx context.Context, env *models.KubernetesEnvironment) error
 	DeleteK8sEnv(ctx context.Context, name string) error
-	UpdateK8sEnvTillerAddr(ctx context.Context, envname, taddr string) error
 	UpdateK8sEnvConfigSignature(ctx context.Context, name string, confSig [32]byte) error
 }
 
@@ -88,7 +89,6 @@ type EventLoggerDataLayer interface {
 	SetEventStatusChartCompleted(id uuid.UUID, name string, status models.NodeChartStatus) error
 	GetEventStatus(id uuid.UUID) (*models.EventStatusSummary, error)
 	SetEventStatusRenderedStatus(id uuid.UUID, rstatus models.RenderedEventStatus) error
-	GetEventLogsWithStatusByEnvName(name string) ([]models.EventLog, error)
 	SetEventStatusFailed(id uuid.UUID, ce metahelm.ChartError) error
 }
 
@@ -101,9 +101,10 @@ type UISessionsDataLayer interface {
 }
 
 type APIKeyDataLayer interface {
-	CreateAPIKey(ctx context.Context, permissionLevel models.PermissionLevel, name, description, githubUser string) (uuid.UUID, error)
-	GetAPIKeyById(ctx context.Context, id uuid.UUID) (*models.APIKey, error)
+	CreateAPIKey(ctx context.Context, permissionLevel models.PermissionLevel, description, githubUser string) (uuid.UUID, error)
+	GetAPIKeyByToken(ctx context.Context, token uuid.UUID) (*models.APIKey, error)
+	GetAPIKeyByID(ctx context.Context, id uuid.UUID) (*models.APIKey, error)
 	GetAPIKeysByGithubUser(ctx context.Context, githubUser string) ([]*models.APIKey, error)
-	UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID) error
-	DeleteAPIKey(ctx context.Context, id uuid.UUID) error
+	UpdateAPIKeyLastUsed(ctx context.Context, token uuid.UUID) error
+	DeleteAPIKeyByID(ctx context.Context, id uuid.UUID) error
 }

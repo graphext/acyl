@@ -34,7 +34,7 @@ func readSecretsJSON(t *testing.T) map[string]string {
 
 func TestSecretsPopulateAllSecrets(t *testing.T) {
 	sm := readSecretsJSON(t)
-	sc, err := pvc.NewSecretsClient(pvc.WithJSONFileBackend(), pvc.WithJSONFileLocation(testSecretsJSONfile), pvc.WithMapping(testSecretPrefix+"{{ .ID }}"))
+	sc, err := pvc.NewSecretsClient(pvc.WithJSONFileBackend(testSecretsJSONfile), pvc.WithMapping(testSecretPrefix+"{{ .ID }}"))
 	if err != nil {
 		t.Fatalf("error getting secrets client: %v", err)
 	}

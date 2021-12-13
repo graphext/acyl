@@ -1,0 +1,530 @@
+<html lang="en">
+    <head>
+        {{ template "header-head" . }}
+        <script type="text/javascript">
+            const urlParams = new URLSearchParams(window.location.search);
+            const event_id = urlParams.get("id");
+        </script>
+    </head>
+    <body class="acyl-ui">
+        {{ template "header-nav" . }}
+        <div class="container">
+            <div class="row">
+                <div class="col">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="{{ .APIBaseURL }}/ui/home">Home</a></li>
+                            <li class="breadcrumb-item" aria-current="page" id="bc-envname">
+                                <a href="{{ .APIBaseURL }}/ui/env/{{ .EnvName }}">{{ .EnvName }}</a>
+                            </li>
+                            <li class="breadcrumb-item">Failure Report</li>
+                            <li class="breadcrumb-item active" aria-current="page" id="bc-eventid">Event: {{ .EventID }}</li>
+                        </ol>
+                    </nav>
+                </div>
+            </div>
+            <div class="container">
+                <div class="row">
+                    <h1>Failed Environment: {{ .EnvName }}</h1>
+                </div>
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="container bg-light text-dark rounded pb-2 pt-3">
+                            <table class="table table-striped table-sm">
+                                <tbody>
+                                <tr>
+                                    <th scope="row">Pull Request</th>
+                                    <td><a href="{{ .PullRequestURL }}">{{ .PullRequestURL }}</a></td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Started</th>
+                                    <td>{{ .StartedTime }}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Failed</th>
+                                    <td>{{ .FailedTime }}</td>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="container bg-light text-dark rounded py-1">
+                            <h3>Failed Resources</h3>
+                            {{ $fdcnt := len .FailedResources.FailedDeployments }}
+                            {{ $fjcnt := len .FailedResources.FailedJobs }}
+                            {{ $fdscnt := len .FailedResources.FailedDaemonSets }}
+                            <ul>
+                                {{ if gt $fdcnt 0 }}
+                                    <li><a href="#deployments">Failed Deployments ({{ $fdcnt }})</a></li>
+                                {{ end }}
+                                {{ if gt $fjcnt 0 }}
+                                    <li><a href="#jobs">Failed Jobs ({{ $fjcnt }})</a></li>
+                                {{ end }}
+                                {{ if gt $fdscnt 0 }}
+                                    <li><a href="#daemonsets">Failed DaemonSets ({{ $fdscnt }})</a></li>
+                                {{ end }}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="container">
+                    {{ if gt $fdcnt 0 }}
+                        <div id="deployments">
+                            <a id="deployments"></a>
+                            <h3>Failed Deployments ({{ $fdcnt }})</h3>
+                            <ol>
+                                {{ range $deploymentname, $failedpods := .FailedResources.FailedDeployments }}
+                                    <li>
+                                        <p>
+                                            <a class="btn btn-primary" data-toggle="collapse" href="#{{ $deploymentname }}-deploymentCollapse" role="button" aria-expanded="false" aria-controls="{{ $deploymentname }}-deploymentCollapse">
+                                                {{ $deploymentname }}
+                                            </a>
+                                        </p>
+                                        <div class="collapse" id="{{ $deploymentname }}-deploymentCollapse">
+                                            <div class="card card-body bg-light text-dark">
+                                                <h5>Failed Pods</h5>
+                                                <ul>
+                                                    {{ range $failedpod := $failedpods }}
+                                                        <li>
+                                                            <p>
+                                                                <a class="btn btn-primary" data-toggle="collapse" href="#{{ $deploymentname }}-deployment-pod-{{ $failedpod.Name }}-Collapse" role="button" aria-expanded="false" aria-controls="{{ $deploymentname }}-deployment-pod-{{ $failedpod.Name }}-Collapse">
+                                                                    {{ $failedpod.Name }}
+                                                                </a>
+                                                            </p>
+                                                            <div class="collapse" id="{{ $deploymentname }}-deployment-pod-{{ $failedpod.Name }}-Collapse">
+                                                                <div class="card card-body">
+                                                                    <div class="container ml-2">
+                                                                        <h5>Status</h5>
+                                                                        <table class="table table-striped table-sm">
+                                                                            <tbody>
+                                                                            <tr>
+                                                                                <th scope="row">Name</th>
+                                                                                <td><a>{{ $failedpod.Name }}</a></td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <th scope="row">Phase</th>
+                                                                                <td>{{ $failedpod.Phase }}</td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <th scope="row">Reason</th>
+                                                                                <td>{{ $failedpod.Reason }}</td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <th scope="row">Message</th>
+                                                                                <td>{{ $failedpod.Message }}</td>
+                                                                            </tr>
+                                                                            </tbody>
+                                                                        </table>
+                                                                        <h5>Conditions</h5>
+                                                                        <table class="table table-striped table-sm">
+                                                                            <thead>
+                                                                            <tr>
+                                                                                <th scope="col">Type</th>
+                                                                                <th scope="col">Status</th>
+                                                                                <th scope="col">LastProbeTime</th>
+                                                                                <th scope="col">LastTransitionTime</th>
+                                                                                <th scope="col">Reason</th>
+                                                                                <th scope="col">Message</th>
+                                                                            </tr>
+                                                                            </thead>
+                                                                            <tbody>
+                                                                            {{ range $condition := $failedpod.Conditions }}
+                                                                                <tr>
+                                                                                    <td>{{ $condition.Type }}</td>
+                                                                                    <td>{{ $condition.Status }}</td>
+                                                                                    <td>{{ $condition.LastProbeTime }}</td>
+                                                                                    <td>{{ $condition.LastTransitionTime }}</td>
+                                                                                    <td>{{ $condition.Reason }}</td>
+                                                                                    <td>{{ $condition.Message }}</td>
+                                                                                </tr>
+                                                                            {{ end }}
+                                                                            </tbody>
+                                                                        </table>
+                                                                        <h5>Failed Containers</h5>
+                                                                        <ul>
+                                                                            {{ range $container := $failedpod.ContainerStatuses }}
+                                                                                <li>
+                                                                                    <p>
+                                                                                        <a class="btn btn-primary" data-toggle="collapse" href="#{{ $deploymentname }}-deployment-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-Collapse" role="button" aria-expanded="false" aria-controls="{{ $deploymentname }}-deployment-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-Collapse">
+                                                                                            {{ $container.Name }}
+                                                                                        </a>
+                                                                                    </p>
+                                                                                    <div class="collapse" id="{{ $deploymentname }}-deployment-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-Collapse">
+                                                                                        <div class="card card-body bg-light text-dark">
+                                                                                            <div class="container ml-2">
+                                                                                                <table class="table table-striped table-sm">
+                                                                                                    <tbody>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Name</th>
+                                                                                                        <td><a>{{ $container.Name }}</a></td>
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">State</th>
+                                                                                                        {{ if $container.State.Waiting }}
+                                                                                                            <td>Waiting ({{ $container.State.Waiting.Reason }}): {{ $container.State.Waiting.Message }}</td>
+                                                                                                        {{ else if $container.State.Running }}
+                                                                                                            <td>Running</td>
+                                                                                                        {{ else if $container.State.Terminated }}
+                                                                                                            <td>Terminated</td>
+                                                                                                        {{ end }}
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Exit Code</th>
+                                                                                                        {{ if $container.State.Terminated }}
+                                                                                                            <td>{{ $container.State.Terminated.ExitCode }}</td>
+                                                                                                        {{ else }}
+                                                                                                            <td>n/a</td>
+                                                                                                        {{ end }}
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Ready</th>
+                                                                                                        <td>{{ $container.Ready }}</td>
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Restart Count</th>
+                                                                                                        <td>{{ $container.RestartCount }}</td>
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Image</th>
+                                                                                                        <td>{{ $container.Image }}</td>
+                                                                                                    </tr>
+                                                                                                    </tbody>
+                                                                                                </table>
+                                                                                                <p>
+                                                                                                    <a class="btn btn-primary" data-toggle="collapse" href="#{{ $deploymentname }}-deployment-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-logs-Collapse" role="button" aria-expanded="false" aria-controls="{{ $deploymentname }}-deployment-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-logs-Collapse">
+                                                                                                        Logs
+                                                                                                    </a>
+                                                                                                </p>
+                                                                                                <div class="collapse" id="{{ $deploymentname }}-deployment-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-logs-Collapse">
+                                                                                                    <div class="card card-body bg-dark text-light">
+                                                                                                        <pre class="pre-scrollable bg-dark text-light p-0"><code class="bg-dark text-light p-0">{{ index $failedpod.Logs $container.Name | printf "%s"}}</code></pre>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </li>
+                                                                            {{ end }}
+                                                                        </ul>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </li>
+                                                    {{ end }}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </li>
+                                {{ end }}
+                            </ol>
+                        </div>
+                    {{ end }}
+                    {{ if gt $fjcnt 0 }}
+                        <div id="jobs">
+                            <a id="jobs"></a>
+                            <h3>Failed Jobs ({{ $fjcnt }})</h3>
+                            <ol>
+                                {{ range $jobname, $failedpods := .FailedResources.FailedJobs }}
+                                    <li>
+                                        <p>
+                                            <a class="btn btn-primary" data-toggle="collapse" href="#{{ $jobname }}-jobCollapse" role="button" aria-expanded="false" aria-controls="{{ $jobname }}-jobCollapse">
+                                                {{ $jobname }}
+                                            </a>
+                                        </p>
+                                        <div class="collapse" id="{{ $jobname }}-jobCollapse">
+                                            <div class="card card-body bg-light text-dark">
+                                                <h5>Failed Pods</h5>
+                                                <ul>
+                                                    {{ range $failedpod := $failedpods }}
+                                                        <li>
+                                                            <p>
+                                                                <a class="btn btn-primary" data-toggle="collapse" href="#{{ $jobname }}-job-pod-{{ $failedpod.Name }}-Collapse" role="button" aria-expanded="false" aria-controls="{{ $jobname }}-job-pod-{{ $failedpod.Name }}-Collapse">
+                                                                    {{ $failedpod.Name }}
+                                                                </a>
+                                                            </p>
+                                                            <div class="collapse" id="{{ $jobname }}-job-pod-{{ $failedpod.Name }}-Collapse">
+                                                                <div class="card card-body">
+                                                                    <div class="container ml-2">
+                                                                        <h5>Status</h5>
+                                                                        <table class="table table-striped table-sm">
+                                                                            <tbody>
+                                                                            <tr>
+                                                                                <th scope="row">Name</th>
+                                                                                <td><a>{{ $failedpod.Name }}</a></td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <th scope="row">Phase</th>
+                                                                                <td>{{ $failedpod.Phase }}</td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <th scope="row">Reason</th>
+                                                                                <td>{{ $failedpod.Reason }}</td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <th scope="row">Message</th>
+                                                                                <td>{{ $failedpod.Message }}</td>
+                                                                            </tr>
+                                                                            </tbody>
+                                                                        </table>
+                                                                        <h5>Conditions</h5>
+                                                                        <table class="table table-striped table-sm">
+                                                                            <thead>
+                                                                            <tr>
+                                                                                <th scope="col">Type</th>
+                                                                                <th scope="col">Status</th>
+                                                                                <th scope="col">LastProbeTime</th>
+                                                                                <th scope="col">LastTransitionTime</th>
+                                                                                <th scope="col">Reason</th>
+                                                                                <th scope="col">Message</th>
+                                                                            </tr>
+                                                                            </thead>
+                                                                            <tbody>
+                                                                            {{ range $condition := $failedpod.Conditions }}
+                                                                                <tr>
+                                                                                    <td>{{ $condition.Type }}</td>
+                                                                                    <td>{{ $condition.Status }}</td>
+                                                                                    <td>{{ $condition.LastProbeTime }}</td>
+                                                                                    <td>{{ $condition.LastTransitionTime }}</td>
+                                                                                    <td>{{ $condition.Reason }}</td>
+                                                                                    <td>{{ $condition.Message }}</td>
+                                                                                </tr>
+                                                                            {{ end }}
+                                                                            </tbody>
+                                                                        </table>
+                                                                        <h5>Failed Containers</h5>
+                                                                        <ul>
+                                                                            {{ range $container := $failedpod.ContainerStatuses }}
+                                                                                <li>
+                                                                                    <p>
+                                                                                        <a class="btn btn-primary" data-toggle="collapse" href="#{{ $jobname }}-job-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-Collapse" role="button" aria-expanded="false" aria-controls="{{ $jobname }}-job-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-Collapse">
+                                                                                            {{ $container.Name }}
+                                                                                        </a>
+                                                                                    </p>
+                                                                                    <div class="collapse" id="{{ $jobname }}-job-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-Collapse">
+                                                                                        <div class="card card-body bg-light text-dark">
+                                                                                            <div class="container ml-2">
+                                                                                                <table class="table table-striped table-sm">
+                                                                                                    <tbody>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Name</th>
+                                                                                                        <td><a>{{ $container.Name }}</a></td>
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">State</th>
+                                                                                                        {{ if $container.State.Waiting }}
+                                                                                                            <td>Waiting ({{ $container.State.Waiting.Reason }}): {{ $container.State.Waiting.Message }}</td>
+                                                                                                        {{ else if $container.State.Running }}
+                                                                                                            <td>Running</td>
+                                                                                                        {{ else if $container.State.Terminated }}
+                                                                                                            <td>Terminated</td>
+                                                                                                        {{ end }}
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Exit Code</th>
+                                                                                                        {{ if $container.State.Terminated }}
+                                                                                                            <td>{{ $container.State.Terminated.ExitCode }}</td>
+                                                                                                        {{ else }}
+                                                                                                            <td>n/a</td>
+                                                                                                        {{ end }}
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Ready</th>
+                                                                                                        <td>{{ $container.Ready }}</td>
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Restart Count</th>
+                                                                                                        <td>{{ $container.RestartCount }}</td>
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Image</th>
+                                                                                                        <td>{{ $container.Image }}</td>
+                                                                                                    </tr>
+                                                                                                    </tbody>
+                                                                                                </table>
+                                                                                                <p>
+                                                                                                    <a class="btn btn-primary" data-toggle="collapse" href="#{{ $jobname }}-job-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-logs-Collapse" role="button" aria-expanded="false" aria-controls="{{ $jobname }}-job-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-logs-Collapse">
+                                                                                                        Logs
+                                                                                                    </a>
+                                                                                                </p>
+                                                                                                <div class="collapse" id="{{ $jobname }}-job-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-logs-Collapse">
+                                                                                                    <div class="card card-body bg-dark text-light">
+                                                                                                        <pre class="pre-scrollable bg-dark text-light p-0"><code class="bg-dark text-light p-0">{{ index $failedpod.Logs $container.Name | printf "%s"}}</code></pre>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </li>
+                                                                            {{ end }}
+                                                                        </ul>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </li>
+                                                    {{ end }}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </li>
+                                {{ end }}
+                            </ol>
+                        </div>
+                    {{ end }}
+                    {{ if gt $fdscnt 0 }}
+                        <div id="daemonsets">
+                            <a id="daemonsets"></a>
+                            <h3>Failed DaemonSets ({{ len .FailedResources.FailedDaemonSets }})</h3>
+                            <ol>
+                                {{ range $daemonsetname, $failedpods := .FailedResources.FailedDaemonSets }}
+                                    <li>
+                                        <p>
+                                            <a class="btn btn-primary" data-toggle="collapse" href="#{{ $daemonsetname }}-daemonsetCollapse" role="button" aria-expanded="false" aria-controls="{{ $daemonsetname }}-daemonsetCollapse">
+                                                {{ $daemonsetname }}
+                                            </a>
+                                        </p>
+                                        <div class="collapse" id="{{ $daemonsetname }}-daemonsetCollapse">
+                                            <div class="card card-body bg-light text-dark">
+                                                <h5>Failed Pods</h5>
+                                                <ul>
+                                                    {{ range $failedpod := $failedpods }}
+                                                        <li>
+                                                            <p>
+                                                                <a class="btn btn-primary" data-toggle="collapse" href="#{{ $daemonsetname }}-daemonset-pod-{{ $failedpod.Name }}-Collapse" role="button" aria-expanded="false" aria-controls="{{ $daemonsetname }}-daemonset-pod-{{ $failedpod.Name }}-Collapse">
+                                                                    {{ $failedpod.Name }}
+                                                                </a>
+                                                            </p>
+                                                            <div class="collapse" id="{{ $daemonsetname }}-daemonset-pod-{{ $failedpod.Name }}-Collapse">
+                                                                <div class="card card-body">
+                                                                    <div class="container ml-2">
+                                                                        <h5>Status</h5>
+                                                                        <table class="table table-striped table-sm">
+                                                                            <tbody>
+                                                                            <tr>
+                                                                                <th scope="row">Name</th>
+                                                                                <td><a>{{ $failedpod.Name }}</a></td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <th scope="row">Phase</th>
+                                                                                <td>{{ $failedpod.Phase }}</td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <th scope="row">Reason</th>
+                                                                                <td>{{ $failedpod.Reason }}</td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <th scope="row">Message</th>
+                                                                                <td>{{ $failedpod.Message }}</td>
+                                                                            </tr>
+                                                                            </tbody>
+                                                                        </table>
+                                                                        <h5>Conditions</h5>
+                                                                        <table class="table table-striped table-sm">
+                                                                            <thead>
+                                                                            <tr>
+                                                                                <th scope="col">Type</th>
+                                                                                <th scope="col">Status</th>
+                                                                                <th scope="col">LastProbeTime</th>
+                                                                                <th scope="col">LastTransitionTime</th>
+                                                                                <th scope="col">Reason</th>
+                                                                                <th scope="col">Message</th>
+                                                                            </tr>
+                                                                            </thead>
+                                                                            <tbody>
+                                                                            {{ range $condition := $failedpod.Conditions }}
+                                                                                <tr>
+                                                                                    <td>{{ $condition.Type }}</td>
+                                                                                    <td>{{ $condition.Status }}</td>
+                                                                                    <td>{{ $condition.LastProbeTime }}</td>
+                                                                                    <td>{{ $condition.LastTransitionTime }}</td>
+                                                                                    <td>{{ $condition.Reason }}</td>
+                                                                                    <td>{{ $condition.Message }}</td>
+                                                                                </tr>
+                                                                            {{ end }}
+                                                                            </tbody>
+                                                                        </table>
+                                                                        <h5>Failed Containers</h5>
+                                                                        <ul>
+                                                                            {{ range $container := $failedpod.ContainerStatuses }}
+                                                                                <li>
+                                                                                    <p>
+                                                                                        <a class="btn btn-primary" data-toggle="collapse" href="#{{ $daemonsetname }}-daemonset-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-Collapse" role="button" aria-expanded="false" aria-controls="{{ $daemonsetname }}-daemonset-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-Collapse">
+                                                                                            {{ $container.Name }}
+                                                                                        </a>
+                                                                                    </p>
+                                                                                    <div class="collapse" id="{{ $daemonsetname }}-daemonset-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-Collapse">
+                                                                                        <div class="card card-body bg-light text-dark">
+                                                                                            <div class="container ml-2">
+                                                                                                <table class="table table-striped table-sm">
+                                                                                                    <tbody>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Name</th>
+                                                                                                        <td><a>{{ $container.Name }}</a></td>
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">State</th>
+                                                                                                        {{ if $container.State.Waiting }}
+                                                                                                            <td>Waiting ({{ $container.State.Waiting.Reason }}): {{ $container.State.Waiting.Message }}</td>
+                                                                                                        {{ else if $container.State.Running }}
+                                                                                                            <td>Running</td>
+                                                                                                        {{ else if $container.State.Terminated }}
+                                                                                                            <td>Terminated</td>
+                                                                                                        {{ end }}
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Exit Code</th>
+                                                                                                        {{ if $container.State.Terminated }}
+                                                                                                            <td>{{ $container.State.Terminated.ExitCode }}</td>
+                                                                                                        {{ else }}
+                                                                                                            <td>n/a</td>
+                                                                                                        {{ end }}
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Ready</th>
+                                                                                                        <td>{{ $container.Ready }}</td>
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Restart Count</th>
+                                                                                                        <td>{{ $container.RestartCount }}</td>
+                                                                                                    </tr>
+                                                                                                    <tr>
+                                                                                                        <th scope="row">Image</th>
+                                                                                                        <td>{{ $container.Image }}</td>
+                                                                                                    </tr>
+                                                                                                    </tbody>
+                                                                                                </table>
+                                                                                                <p>
+                                                                                                    <a class="btn btn-primary" data-toggle="collapse" href="#{{ $daemonsetname }}-daemonset-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-logs-Collapse" role="button" aria-expanded="false" aria-controls="{{ $daemonsetname }}-daemonset-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-logs-Collapse">
+                                                                                                        Logs
+                                                                                                    </a>
+                                                                                                </p>
+                                                                                                <div class="collapse" id="{{ $daemonsetname }}-daemonset-pod-{{ $failedpod.Name }}-container-{{ $container.Name }}-logs-Collapse">
+                                                                                                    <div class="card card-body bg-dark text-light">
+                                                                                                        <pre class="pre-scrollable bg-dark text-light p-0"><code class="bg-dark text-light p-0">{{ index $failedpod.Logs $container.Name | printf "%s"}}</code></pre>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </li>
+                                                                            {{ end }}
+                                                                        </ul>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </li>
+                                                    {{ end }}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </li>
+                                {{ end }}
+                            </ol>
+                        </div>
+                    {{ end }}
+                </div>
+            </div>
+        </div>
+        {{ template "footer-scripts" . }}
+    </body>
+</html>

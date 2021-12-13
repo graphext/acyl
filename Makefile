@@ -3,13 +3,14 @@
 default: build
 
 build:
-	GO111MODULE=off go install github.com/dollarshaveclub/acyl
+	go mod vendor
+	go install github.com/dollarshaveclub/acyl
 
 generate:
-	GO111MODULE=off go generate ./...
+	go generate ./...
 
 check:
 	./check.sh
 
-swagger:
-	./swagger.sh
+docs:
+	./openapi.sh

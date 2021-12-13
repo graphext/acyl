@@ -12,30 +12,90 @@ import (
 	"gonum.org/v1/gonum/internal/asm/f64"
 )
 
-// Dgemm computes
-//  C = beta * C + alpha * A * B,
-// where A, B, and C are dense matrices, and alpha and beta are scalars.
-// tA and tB specify whether A or B are transposed.
+// Dgemm performs one of the matrix-matrix operations
+//  C = alpha * A * B + beta * C
+//  C = alpha * Aᵀ * B + beta * C
+//  C = alpha * A * Bᵀ + beta * C
+//  C = alpha * Aᵀ * Bᵀ + beta * C
+// where A is an m×k or k×m dense matrix, B is an n×k or k×n dense matrix, C is
+// an m×n matrix, and alpha and beta are scalars. tA and tB specify whether A or
+// B are transposed.
 func (Implementation) Dgemm(tA, tB blas.Transpose, m, n, k int, alpha float64, a []float64, lda int, b []float64, ldb int, beta float64, c []float64, ldc int) {
-	if tA != blas.NoTrans && tA != blas.Trans && tA != blas.ConjTrans {
+	switch tA {
+	default:
 		panic(badTranspose)
+	case blas.NoTrans, blas.Trans, blas.ConjTrans:
 	}
-	if tB != blas.NoTrans && tB != blas.Trans && tB != blas.ConjTrans {
+	switch tB {
+	default:
 		panic(badTranspose)
+	case blas.NoTrans, blas.Trans, blas.ConjTrans:
+	}
+	if m < 0 {
+		panic(mLT0)
+	}
+	if n < 0 {
+		panic(nLT0)
+	}
+	if k < 0 {
+		panic(kLT0)
 	}
 	aTrans := tA == blas.Trans || tA == blas.ConjTrans
 	if aTrans {
-		checkDMatrix('a', k, m, a, lda)
+		if lda < max(1, m) {
+			panic(badLdA)
+		}
 	} else {
-		checkDMatrix('a', m, k, a, lda)
+		if lda < max(1, k) {
+			panic(badLdA)
+		}
 	}
 	bTrans := tB == blas.Trans || tB == blas.ConjTrans
 	if bTrans {
-		checkDMatrix('b', n, k, b, ldb)
+		if ldb < max(1, k) {
+			panic(badLdB)
+		}
 	} else {
-		checkDMatrix('b', k, n, b, ldb)
+		if ldb < max(1, n) {
+			panic(badLdB)
+		}
 	}
-	checkDMatrix('c', m, n, c, ldc)
+	if ldc < max(1, n) {
+		panic(badLdC)
+	}
+
+	// Quick return if possible.
+	if m == 0 || n == 0 {
+		return
+	}
+
+	// For zero matrix size the following slice length checks are trivially satisfied.
+	if aTrans {
+		if len(a) < (k-1)*lda+m {
+			panic(shortA)
+		}
+	} else {
+		if len(a) < (m-1)*lda+k {
+			panic(shortA)
+		}
+	}
+	if bTrans {
+		if len(b) < (n-1)*ldb+k {
+			panic(shortB)
+		}
+	} else {
+		if len(b) < (k-1)*ldb+n {
+			panic(shortB)
+		}
+	}
+	if len(c) < (m-1)*ldc+n {
+		panic(shortC)
+	}
+
+	// Quick return if possible.
+	if (alpha == 0 || k == 0) && beta == 1 {
+		return
+	}
 
 	// scale c
 	if beta != 1 {
@@ -74,9 +134,9 @@ func dgemmParallel(aTrans, bTrans bool, m, n, k int, a []float64, lda int, b []f
 	// In all cases, there is one dimension for each matrix along which
 	// C must be updated sequentially.
 	// Cij = \sum_k Aik Bki,	(A * B)
-	// Cij = \sum_k Aki Bkj,	(A^T * B)
-	// Cij = \sum_k Aik Bjk,	(A * B^T)
-	// Cij = \sum_k Aki Bjk,	(A^T * B^T)
+	// Cij = \sum_k Aki Bkj,	(Aᵀ * B)
+	// Cij = \sum_k Aik Bjk,	(A * Bᵀ)
+	// Cij = \sum_k Aki Bjk,	(Aᵀ * Bᵀ)
 	//
 	// This code computes one {i, j} block sequentially along the k dimension,
 	// and computes all of the {i, j} blocks concurrently. This
@@ -98,38 +158,24 @@ func dgemmParallel(aTrans, bTrans bool, m, n, k int, a []float64, lda int, b []f
 		return
 	}
 
-	nWorkers := runtime.GOMAXPROCS(0)
-	if parBlocks < nWorkers {
-		nWorkers = parBlocks
-	}
-	// There is a tradeoff between the workers having to wait for work
-	// and a large buffer making operations slow.
-	buf := buffMul * nWorkers
-	if buf > parBlocks {
-		buf = parBlocks
-	}
+	// workerLimit acts a number of maximum concurrent workers,
+	// with the limit set to the number of procs available.
+	workerLimit := make(chan struct{}, runtime.GOMAXPROCS(0))
 
-	sendChan := make(chan subMul, buf)
-
-	// Launch workers. A worker receives an {i, j} submatrix of c, and computes
-	// A_ik B_ki (or the transposed version) storing the result in c_ij. When the
-	// channel is finally closed, it signals to the waitgroup that it has finished
-	// computing.
+	// wg is used to wait for all
 	var wg sync.WaitGroup
-	for i := 0; i < nWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// Make local copies of otherwise global variables to reduce shared memory.
-			// This has a noticeable effect on benchmarks in some cases.
-			alpha := alpha
-			aTrans := aTrans
-			bTrans := bTrans
-			m := m
-			n := n
-			for sub := range sendChan {
-				i := sub.i
-				j := sub.j
+	wg.Add(parBlocks)
+	defer wg.Wait()
+
+	for i := 0; i < m; i += blockSize {
+		for j := 0; j < n; j += blockSize {
+			workerLimit <- struct{}{}
+			go func(i, j int) {
+				defer func() {
+					wg.Done()
+					<-workerLimit
+				}()
+
 				leni := blockSize
 				if i+leni > m {
 					leni = m - i
@@ -160,21 +206,9 @@ func dgemmParallel(aTrans, bTrans bool, m, n, k int, a []float64, lda int, b []f
 					}
 					dgemmSerial(aTrans, bTrans, leni, lenj, lenk, aSub, lda, bSub, ldb, cSub, ldc, alpha)
 				}
-			}
-		}()
-	}
-
-	// Send out all of the {i, j} subblocks for computation.
-	for i := 0; i < m; i += blockSize {
-		for j := 0; j < n; j += blockSize {
-			sendChan <- subMul{
-				i: i,
-				j: j,
-			}
+			}(i, j)
 		}
 	}
-	close(sendChan)
-	wg.Wait()
 }
 
 // dgemmSerial is serial matrix multiply
@@ -206,7 +240,7 @@ func dgemmSerialNotNot(m, n, k int, a []float64, lda int, b []float64, ldb int, 
 		for l, v := range a[i*lda : i*lda+k] {
 			tmp := alpha * v
 			if tmp != 0 {
-				f64.AxpyUnitaryTo(ctmp, tmp, b[l*ldb:l*ldb+n], ctmp)
+				f64.AxpyUnitary(tmp, b[l*ldb:l*ldb+n], ctmp)
 			}
 		}
 	}
@@ -222,7 +256,7 @@ func dgemmSerialTransNot(m, n, k int, a []float64, lda int, b []float64, ldb int
 			tmp := alpha * v
 			if tmp != 0 {
 				ctmp := c[i*ldc : i*ldc+n]
-				f64.AxpyUnitaryTo(ctmp, tmp, btmp, ctmp)
+				f64.AxpyUnitary(tmp, btmp, ctmp)
 			}
 		}
 	}

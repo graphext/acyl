@@ -1,7 +1,7 @@
 package api
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"log"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/dollarshaveclub/acyl/pkg/config"
 	"github.com/dollarshaveclub/acyl/pkg/ghclient"
+	"github.com/dollarshaveclub/acyl/pkg/models"
 	"github.com/dollarshaveclub/acyl/pkg/testhelper/testdatalayer"
 	muxtrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gorilla/mux"
 )
@@ -57,25 +58,130 @@ var ghcfg = config.GithubConfig{
 	AppHookSecret: "asdf",
 }
 
+func TestAPIv0List(t *testing.T) {
+	dl, tdl := testdatalayer.New(testlogger, t)
+	if err := tdl.Setup(testDataPath); err != nil {
+		t.Fatalf("error setting up test database: %v", err)
+	}
+	defer tdl.TearDown()
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
+	if err != nil {
+		t.Fatalf("error creating api: %v", err)
+	}
+	authMiddleware.apiKeys = sc.APIKeys
+
+	r := muxtrace.NewRouter()
+	apiv0.register(r)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/envs?full_details=true", nil)
+	req.Header.Set(apiKeyHeader, sc.APIKeys[0])
+	hc := &http.Client{}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatalf("error executing request: %v", err)
+	}
+	bb, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("should have succeeded: %v: %v", resp.StatusCode, bb)
+	}
+	res := []v0QAEnvironment{}
+	err = json.Unmarshal(bb, &res)
+	if err != nil {
+		t.Fatalf("error unmarshaling results: %v", err)
+	}
+	if len(res) != 7 {
+		t.Fatalf("unexpected results length: %v", len(res))
+	}
+}
+
+func TestAPIv0ListUserAPIKey(t *testing.T) {
+	dl, tdl := testdatalayer.New(testlogger, t)
+	if err := tdl.Setup(testDataPath); err != nil {
+		t.Fatalf("error setting up test database: %v", err)
+	}
+	defer tdl.TearDown()
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
+	if err != nil {
+		t.Fatalf("error creating api: %v", err)
+	}
+	id, err := dl.CreateAPIKey(context.Background(), models.ReadOnlyPermission, "foo-description", "bobsmith")
+	if err != nil {
+		t.Fatalf("api key creation should have succeeded")
+	}
+	authMiddleware.apiKeys = sc.APIKeys
+	authMiddleware.DL = dl
+
+	r := muxtrace.NewRouter()
+	apiv0.register(r)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/envs?full_details=true", nil)
+	req.Header.Set(apiKeyHeader, id.String())
+	hc := &http.Client{}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatalf("error executing request: %v", err)
+	}
+	bb, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("should have succeeded: %v: %v", resp.StatusCode, bb)
+	}
+	res := []v0QAEnvironment{}
+	err = json.Unmarshal(bb, &res)
+	if err != nil {
+		t.Fatalf("error unmarshaling results: %v", err)
+	}
+	if len(res) != 1 {
+		t.Fatalf("unexpected results length: %v", len(res))
+	}
+}
+
 func TestAPIv0SearchSimple(t *testing.T) {
 	dl, tdl := testdatalayer.New(testlogger, t)
 	if err := tdl.Setup(testDataPath); err != nil {
 		t.Fatalf("error setting up test database: %v", err)
 	}
 	defer tdl.TearDown()
-	rc := httptest.NewRecorder()
-	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, config.ServerConfig{APIKeys: []string{"foo"}}, testlogger)
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
 	if err != nil {
-		t.Fatalf("error creating apiv0: %v", err)
+		t.Fatalf("error creating api: %v", err)
 	}
-	req, _ := http.NewRequest("GET", "/envs/_search?repo=dollarshaveclub%2Ffoo-bar", nil)
-	req.Header.Set(apiKeyHeader, "foo")
-	apiv0.envSearchHandler(rc, req)
-	if rc.Code != http.StatusOK {
-		t.Fatalf("should have succeeded: %v", rc.Code)
+	authMiddleware.apiKeys = sc.APIKeys
+	authMiddleware.DL = dl
+
+	r := muxtrace.NewRouter()
+	apiv0.register(r)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/envs/_search?repo=dollarshaveclub%2Ffoo-bar", nil)
+	req.Header.Set(apiKeyHeader, sc.APIKeys[0])
+	hc := &http.Client{}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatalf("error executing request: %v", err)
+	}
+	bb, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("should have succeeded: %v: %v", resp.StatusCode, bb)
 	}
 	res := []v0QAEnvironment{}
-	err = json.Unmarshal(rc.Body.Bytes(), &res)
+	err = json.Unmarshal(bb, &res)
 	if err != nil {
 		t.Fatalf("error unmarshaling results: %v", err)
 	}
@@ -90,19 +196,35 @@ func TestAPIv0SearchComplex(t *testing.T) {
 		t.Fatalf("error setting up test database: %v", err)
 	}
 	defer tdl.TearDown()
-	rc := httptest.NewRecorder()
-	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, config.ServerConfig{APIKeys: []string{"foo"}}, testlogger)
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
 	if err != nil {
-		t.Fatalf("error creating apiv0: %v", err)
+		t.Fatalf("error creating api: %v", err)
 	}
-	req, _ := http.NewRequest("GET", "/envs/_search?user=joshritter&source_branch=feature-rm-rf-slash&status=success", nil)
-	req.Header.Set(apiKeyHeader, "foo")
-	apiv0.envSearchHandler(rc, req)
-	if rc.Code != http.StatusOK {
-		t.Fatalf("should have succeeded: %v", rc.Code)
+	authMiddleware.apiKeys = sc.APIKeys
+	authMiddleware.DL = dl
+
+	r := muxtrace.NewRouter()
+	apiv0.register(r)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/envs/_search?user=joshritter&source_branch=feature-rm-rf-slash&status=success", nil)
+	req.Header.Set(apiKeyHeader, sc.APIKeys[0])
+	hc := &http.Client{}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatalf("error executing request: %v", err)
+	}
+	bb, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("should have succeeded: %v: %v", resp.StatusCode, bb)
 	}
 	res := []v0QAEnvironment{}
-	err = json.Unmarshal(rc.Body.Bytes(), &res)
+	err = json.Unmarshal(bb, &res)
 	if err != nil {
 		t.Fatalf("error unmarshaling results: %v", err)
 	}
@@ -117,16 +239,31 @@ func TestAPIv0SearchBadPROnly(t *testing.T) {
 		t.Fatalf("error setting up test database: %v", err)
 	}
 	defer tdl.TearDown()
-	rc := httptest.NewRecorder()
-	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, config.ServerConfig{APIKeys: []string{"foo"}}, testlogger)
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
 	if err != nil {
-		t.Fatalf("error creating apiv0: %v", err)
+		t.Fatalf("error creating api: %v", err)
 	}
-	req, _ := http.NewRequest("GET", "/envs/_search?pr=99", nil)
-	req.Header.Set(apiKeyHeader, "foo")
-	apiv0.envSearchHandler(rc, req)
-	if rc.Code != http.StatusBadRequest {
-		t.Fatalf("should have failed with bad request: %v", rc.Code)
+	authMiddleware.apiKeys = sc.APIKeys
+
+	r := muxtrace.NewRouter()
+	apiv0.register(r)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/envs/_search?pr=99", nil)
+	req.Header.Set(apiKeyHeader, sc.APIKeys[0])
+	hc := &http.Client{}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatalf("error executing request: %v", err)
+	}
+	bb, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("should have succeeded: %v: %v", resp.StatusCode, bb)
 	}
 }
 
@@ -136,19 +273,39 @@ func TestAPIv0SearchNotFound(t *testing.T) {
 		t.Fatalf("error setting up test database: %v", err)
 	}
 	defer tdl.TearDown()
-	rc := httptest.NewRecorder()
-	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, config.ServerConfig{APIKeys: []string{"foo"}}, testlogger)
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
 	if err != nil {
-		t.Fatalf("error creating apiv0: %v", err)
+		t.Fatalf("error creating api: %v", err)
 	}
-	req, _ := http.NewRequest("GET", "/envs/_search?user=nonexistant", nil)
-	req.Header.Set(apiKeyHeader, "foo")
-	apiv0.envSearchHandler(rc, req)
-	if rc.Code != http.StatusOK {
-		t.Fatalf("should have returned 200 OK: %v", rc.Code)
+	authMiddleware.apiKeys = sc.APIKeys
+
+	r := muxtrace.NewRouter()
+	apiv0.register(r)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/envs/_search?user=nonexistant", nil)
+	req.Header.Set(apiKeyHeader, sc.APIKeys[0])
+	hc := &http.Client{}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatalf("error executing request: %v", err)
 	}
-	if !bytes.Equal(rc.Body.Bytes(), []byte(`[]`)) {
-		t.Fatalf("should have returned an empty JSON array")
+	bb, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("should have succeeded: %v: %v", resp.StatusCode, bb)
+	}
+	res := []v0QAEnvironment{}
+	err = json.Unmarshal(bb, &res)
+	if err != nil {
+		t.Fatalf("error unmarshaling results: %v", err)
+	}
+	if len(res) != 0 {
+		t.Fatalf("unexpected results length: %v", len(res))
 	}
 }
 
@@ -158,16 +315,32 @@ func TestAPIv0SearchEmptyQuery(t *testing.T) {
 		t.Fatalf("error setting up test database: %v", err)
 	}
 	defer tdl.TearDown()
-	rc := httptest.NewRecorder()
-	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, config.ServerConfig{APIKeys: []string{"foo"}}, testlogger)
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
 	if err != nil {
-		t.Fatalf("error creating apiv0: %v", err)
+		t.Fatalf("error creating api: %v", err)
 	}
-	req, _ := http.NewRequest("GET", "/envs/_search", nil)
-	req.Header.Set(apiKeyHeader, "foo")
-	apiv0.envSearchHandler(rc, req)
-	if rc.Code != http.StatusBadRequest {
-		t.Fatalf("should have failed with bad request: %v", rc.Code)
+	authMiddleware.apiKeys = sc.APIKeys
+	authMiddleware.DL = dl
+
+	r := muxtrace.NewRouter()
+	apiv0.register(r)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/envs/_search", nil)
+	req.Header.Set(apiKeyHeader, sc.APIKeys[0])
+	hc := &http.Client{}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatalf("error executing request: %v", err)
+	}
+	bb, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("should have succeeded: %v: %v", resp.StatusCode, bb)
 	}
 }
 
@@ -177,16 +350,31 @@ func TestAPIv0SearchBadStatusOnly(t *testing.T) {
 		t.Fatalf("error setting up test database: %v", err)
 	}
 	defer tdl.TearDown()
-	rc := httptest.NewRecorder()
-	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, config.ServerConfig{APIKeys: []string{"foo"}}, testlogger)
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
 	if err != nil {
-		t.Fatalf("error creating apiv0: %v", err)
+		t.Fatalf("error creating api: %v", err)
 	}
-	req, _ := http.NewRequest("GET", "/envs/_search?status=destroyed", nil)
-	req.Header.Set(apiKeyHeader, "foo")
-	apiv0.envSearchHandler(rc, req)
-	if rc.Code != http.StatusBadRequest {
-		t.Fatalf("should have failed with bad request: %v", rc.Code)
+	authMiddleware.apiKeys = sc.APIKeys
+
+	r := muxtrace.NewRouter()
+	apiv0.register(r)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/envs/_search?status=destroyed", nil)
+	req.Header.Set(apiKeyHeader, sc.APIKeys[0])
+	hc := &http.Client{}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatalf("error executing request: %v", err)
+	}
+	bb, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("should have succeeded: %v: %v", resp.StatusCode, bb)
 	}
 }
 
@@ -196,16 +384,32 @@ func TestAPIv0SearchSuccessOnly(t *testing.T) {
 		t.Fatalf("error setting up test database: %v", err)
 	}
 	defer tdl.TearDown()
-	rc := httptest.NewRecorder()
-	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, config.ServerConfig{APIKeys: []string{"foo"}}, testlogger)
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
 	if err != nil {
-		t.Fatalf("error creating apiv0: %v", err)
+		t.Fatalf("error creating api: %v", err)
 	}
-	req, _ := http.NewRequest("GET", "/envs/_search?status=success", nil)
-	req.Header.Set(apiKeyHeader, "foo")
-	apiv0.envSearchHandler(rc, req)
-	if rc.Code != http.StatusOK {
-		t.Fatalf("request should have succeeded, got: %v", rc.Code)
+	authMiddleware.apiKeys = sc.APIKeys
+	authMiddleware.DL = dl
+
+	r := muxtrace.NewRouter()
+	apiv0.register(r)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/envs/_search?status=success", nil)
+	req.Header.Set(apiKeyHeader, sc.APIKeys[0])
+	hc := &http.Client{}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatalf("error executing request: %v", err)
+	}
+	bb, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("should have succeeded: %v: %v", resp.StatusCode, bb)
 	}
 }
 
@@ -215,12 +419,14 @@ func TestAPIv0EnvDetails(t *testing.T) {
 		t.Fatalf("error setting up test database: %v", err)
 	}
 	defer tdl.TearDown()
-	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, config.ServerConfig{APIKeys: []string{"foo"}}, testlogger)
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
 	if err != nil {
 		t.Fatalf("error creating api: %v", err)
 	}
-
-	authMiddleware.apiKeys = []string{"foo"}
+	authMiddleware.apiKeys = sc.APIKeys
+	authMiddleware.DL = dl
 
 	r := muxtrace.NewRouter()
 	apiv0.register(r)
@@ -228,14 +434,12 @@ func TestAPIv0EnvDetails(t *testing.T) {
 	defer ts.Close()
 
 	req, _ := http.NewRequest("GET", ts.URL+"/envs/foo-bar", nil)
-	req.Header.Set(apiKeyHeader, "foo")
-
+	req.Header.Set(apiKeyHeader, sc.APIKeys[0])
 	hc := &http.Client{}
 	resp, err := hc.Do(req)
 	if err != nil {
 		t.Fatalf("error executing request: %v", err)
 	}
-
 	bb, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
@@ -249,5 +453,91 @@ func TestAPIv0EnvDetails(t *testing.T) {
 	}
 	if len(res.RefMap) != 2 {
 		t.Fatalf("unexpected length for RefMap: %v", len(res.RefMap))
+	}
+}
+
+func TestAPIv0EnvDetailsUserAPIKey(t *testing.T) {
+	dl, tdl := testdatalayer.New(testlogger, t)
+	if err := tdl.Setup(testDataPath); err != nil {
+		t.Fatalf("error setting up test database: %v", err)
+	}
+	defer tdl.TearDown()
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
+	if err != nil {
+		t.Fatalf("error creating api: %v", err)
+	}
+	id, err := dl.CreateAPIKey(context.Background(), models.ReadOnlyPermission, "foo-description", "bobsmith")
+	if err != nil {
+		t.Fatalf("api key creation should have succeeded")
+	}
+	authMiddleware.apiKeys = sc.APIKeys
+	authMiddleware.DL = dl
+
+	r := muxtrace.NewRouter()
+	apiv0.register(r)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/envs/foo-bar", nil)
+	req.Header.Set(apiKeyHeader, id.String())
+	hc := &http.Client{}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatalf("error executing request: %v", err)
+	}
+	bb, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("should have succeeded: %v: %v", resp.StatusCode, bb)
+	}
+	res := v0QAEnvironment{}
+	err = json.Unmarshal(bb, &res)
+	if err != nil {
+		t.Fatalf("error unmarshaling results: %v", err)
+	}
+	if len(res.RefMap) != 2 {
+		t.Fatalf("unexpected length for RefMap: %v", len(res.RefMap))
+	}
+}
+
+func TestAPIv0EnvDetailsUserAPIKeyForbidden(t *testing.T) {
+	dl, tdl := testdatalayer.New(testlogger, t)
+	if err := tdl.Setup(testDataPath); err != nil {
+		t.Fatalf("error setting up test database: %v", err)
+	}
+	defer tdl.TearDown()
+
+	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	apiv0, err := newV0API(dl, nil, nil, &ghclient.FakeRepoClient{}, ghcfg, sc, testlogger)
+	if err != nil {
+		t.Fatalf("error creating api: %v", err)
+	}
+	id, err := dl.CreateAPIKey(context.Background(), models.ReadOnlyPermission, "foo-description", "foo-user")
+	if err != nil {
+		t.Fatalf("api key creation should have succeeded")
+	}
+	authMiddleware.apiKeys = sc.APIKeys
+	authMiddleware.DL = dl
+
+	r := muxtrace.NewRouter()
+	apiv0.register(r)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/envs/foo-bar", nil)
+	req.Header.Set(apiKeyHeader, id.String())
+	hc := &http.Client{}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatalf("error executing request: %v", err)
+	}
+	bb, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("should have failed: %v: %v", resp.StatusCode, bb)
 	}
 }

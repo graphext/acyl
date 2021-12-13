@@ -64,7 +64,6 @@
             "config": "YXNkZgo=",
             "config_signature": "YXNkZgo=",
             "ref_map_json": "{}",
-            "tiller_addr": "0.0.0.0:7777",
             "privileged": false
         },
         {
@@ -74,7 +73,6 @@
             "config": "YXNkZgo=",
             "config_signature": "YXNkZgo=",
             "ref_map_json": "{}",
-            "tiller_addr": "0.0.0.0:7777",
             "privileged": false
         },
         {
@@ -84,7 +82,6 @@
             "config": "YXNkZgo=",
             "config_signature": "YXNkZgo=",
             "ref_map_json": "{}",
-            "tiller_addr": "0.0.0.0:7777",
             "privileged": false
         },
         {
@@ -94,7 +91,6 @@
             "config": "YXNkZgo=",
             "config_signature": "YXNkZgo=",
             "ref_map_json": "{}",
-            "tiller_addr": "0.0.0.0:7777",
             "privileged": false
         },
         {
@@ -104,7 +100,6 @@
             "config": "YXNkZgo=",
             "config_signature": "YXNkZgo=",
             "ref_map_json": "{}",
-            "tiller_addr": "0.0.0.0:7777",
             "privileged": false
         },
         {
@@ -114,7 +109,6 @@
             "config": "YXNkZgo=",
             "config_signature": "YXNkZgo=",
             "ref_map_json": "{}",
-            "tiller_addr": "0.0.0.0:7777",
             "privileged": false
         }
     ],
@@ -136,6 +130,41 @@
             "release": "postgres",
             "revision_sha": "1234",
             "name": "postgres"
+        }
+    ],
+    "api_keys": [
+        {
+            "id": "aefabae0-88ea-11eb-8dcd-0242ac130003",
+            "created": "2020-02-19T12:12:12.077582996Z",
+            "last_used": {
+                "time": "2020-02-19T12:12:12.077582996Z",
+                "valid": true
+            },
+            "permission_level": 2,
+            "description": "foo-faz description",
+            "github_user": "bobsmith"
+        },
+        {
+            "id": "d85aba84-88ea-11eb-8dcd-0242ac130003",
+            "created": "2020-02-19T12:12:12.077582996Z",
+            "last_used": {
+                "time": "2020-02-19T12:12:12.077582996Z",
+                "valid": true
+            },
+            "permission_level": 1,
+            "description": "bar-baz description",
+            "github_user": "bobsmith"
+        },
+        {
+            "id": "6985dc36-08d6-11eb-adc1-0242ac120002",
+            "created": "2020-02-19T12:12:12.077582996Z",
+            "last_used": {
+                "time": "0001-01-01T00:00:00.000000000Z",
+                "valid": false
+            },
+            "permission_level": 3,
+            "description": "gaz-buz description",
+            "github_user": "bobsmith"
         }
     ]
 }

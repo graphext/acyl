@@ -4,7 +4,6 @@ import (
 	"context"
 	stdliberrors "errors"
 	"fmt"
-	"html/template"
 	"sort"
 	"time"
 
@@ -27,7 +26,7 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
-	billy "gopkg.in/src-d/go-billy.v4"
+	"gopkg.in/src-d/go-billy.v4"
 	billyutil "gopkg.in/src-d/go-billy.v4/util"
 )
 
@@ -53,7 +52,6 @@ type Manager struct {
 	CI                   metahelm.Installer
 	PLF                  locker.PreemptiveLockerFactory
 	GlobalLimit          uint
-	failureTemplate      *template.Template
 	OperationTimeout     time.Duration
 	UIBaseURL            string
 }

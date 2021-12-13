@@ -1,1 +1,0 @@
-drop function if exists create_index_if_not_exists (t_name text, i_name text, index_sql text);

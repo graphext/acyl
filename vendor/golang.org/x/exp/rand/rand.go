@@ -185,6 +185,31 @@ func (r *Rand) Perm(n int) []int {
 	return m
 }
 
+// Shuffle pseudo-randomizes the order of elements.
+// n is the number of elements. Shuffle panics if n < 0.
+// swap swaps the elements with indexes i and j.
+func (r *Rand) Shuffle(n int, swap func(i, j int)) {
+	if n < 0 {
+		panic("invalid argument to Shuffle")
+	}
+
+	// Fisher-Yates shuffle: https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
+	// Shuffle really ought not be called with n that doesn't fit in 32 bits.
+	// Not only will it take a very long time, but with 2³¹! possible permutations,
+	// there's no way that any PRNG can have a big enough internal state to
+	// generate even a minuscule percentage of the possible permutations.
+	// Nevertheless, the right API signature accepts an int n, so handle it as best we can.
+	i := n - 1
+	for ; i > 1<<31-1-1; i-- {
+		j := int(r.Int63n(int64(i + 1)))
+		swap(i, j)
+	}
+	for ; i > 0; i-- {
+		j := int(r.Int31n(int32(i + 1)))
+		swap(i, j)
+	}
+}
+
 // Read generates len(p) random bytes and writes them into p. It
 // always returns len(p) and a nil error.
 // Read should not be called concurrently with any other Rand method.
@@ -192,15 +217,20 @@ func (r *Rand) Read(p []byte) (n int, err error) {
 	if lk, ok := r.src.(*LockedSource); ok {
 		return lk.Read(p, &r.readVal, &r.readPos)
 	}
-	return read(p, r.Uint64, &r.readVal, &r.readPos)
+	return read(p, r.src, &r.readVal, &r.readPos)
 }
 
-func read(p []byte, uint64 func() uint64, readVal *uint64, readPos *int8) (n int, err error) {
+func read(p []byte, src Source, readVal *uint64, readPos *int8) (n int, err error) {
 	pos := *readPos
 	val := *readVal
+	rng, _ := src.(*PCGSource)
 	for n = 0; n < len(p); n++ {
 		if pos == 0 {
-			val = uint64()
+			if rng != nil {
+				val = rng.Uint64()
+			} else {
+				val = src.Uint64()
+			}
 			pos = 8
 		}
 		p[n] = byte(val)
@@ -216,7 +246,10 @@ func read(p []byte, uint64 func() uint64, readVal *uint64, readPos *int8) (n int
  * Top-level convenience functions
  */
 
-var globalRand = New(&LockedSource{src: NewSource(1)})
+var globalRand = New(&LockedSource{src: NewSource(1).(*PCGSource)})
+
+// Type assert that globalRand's source is a LockedSource whose src is a *rngSource.
+var _ *PCGSource = globalRand.src.(*LockedSource).src
 
 // Seed uses the provided seed value to initialize the default Source to a
 // deterministic state. If Seed is not called, the generator behaves as
@@ -270,6 +303,11 @@ func Float32() float32 { return globalRand.Float32() }
 // from the default Source.
 func Perm(n int) []int { return globalRand.Perm(n) }
 
+// Shuffle pseudo-randomizes the order of elements using the default Source.
+// n is the number of elements. Shuffle panics if n < 0.
+// swap swaps the elements with indexes i and j.
+func Shuffle(n int, swap func(i, j int)) { globalRand.Shuffle(n, swap) }
+
 // Read generates len(p) random bytes from the default Source and
 // writes them into p. It always returns len(p) and a nil error.
 // Read, unlike the Rand.Read method, is safe for concurrent use.
@@ -300,7 +338,7 @@ func ExpFloat64() float64 { return globalRand.ExpFloat64() }
 // It is just a standard Source with its operations protected by a sync.Mutex.
 type LockedSource struct {
 	lk  sync.Mutex
-	src Source
+	src *PCGSource
 }
 
 func (s *LockedSource) Uint64() (n uint64) {
@@ -327,7 +365,7 @@ func (s *LockedSource) seedPos(seed uint64, readPos *int8) {
 // Read implements Read for a LockedSource.
 func (s *LockedSource) Read(p []byte, readVal *uint64, readPos *int8) (n int, err error) {
 	s.lk.Lock()
-	n, err = read(p, s.src.Uint64, readVal, readPos)
+	n, err = read(p, s.src, readVal, readPos)
 	s.lk.Unlock()
 	return
 }

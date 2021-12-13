@@ -52,9 +52,9 @@ func (ebg *envVarBackendGetter) Get(id string) ([]byte, error) {
 		return nil, fmt.Errorf("error mapping id to var name: %v", err)
 	}
 	vname = ebg.sanitizeName(vname)
-	secret, exists := os.LookupEnv(vname)
+	val, exists := os.LookupEnv(vname)
 	if !exists {
 		return nil, fmt.Errorf("secret not found: %v", vname)
 	}
-	return []byte(secret), nil
+	return []byte(val), nil
 }

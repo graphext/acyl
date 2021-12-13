@@ -542,6 +542,7 @@ func TestDataLayerGetQAEnvironmentByUser(t *testing.T) {
 		t.Fatalf("wrong env: %v", qas[0].Name)
 	}
 }
+
 func TestDataLayerSearch(t *testing.T) {
 	dl, tdl := NewTestDataLayer(t)
 	if err := tdl.Setup(testDataPath); err != nil {
@@ -828,6 +829,321 @@ func TestDataLayerSearch(t *testing.T) {
 	}
 }
 
+func TestDataLayerSearchEnvsForUser(t *testing.T) {
+	dl, tdl := NewTestDataLayer(t)
+	if err := tdl.Setup(testDataPath); err != nil {
+		t.Fatalf("error setting up test database: %v", err)
+	}
+	defer tdl.TearDown()
+	tests := []struct {
+		name       string
+		opts       models.EnvSearchParameters
+		verifyfunc func([]models.QAEnvironment, error) error
+	}{
+		{
+			name: "by repo",
+			opts: models.EnvSearchParameters{
+				User: "marykatherine",
+				Repo: "dollarshaveclub/foo-baz",
+			},
+			verifyfunc: func(envs []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("repo: should have succeeded: %v", err)
+				}
+				if len(envs) != 2 {
+					return fmt.Errorf("repo: unexpected length: %v", len(envs))
+				}
+				return nil
+			},
+		},
+		{
+			name: "by repo and pr",
+			opts: models.EnvSearchParameters{
+				User: "bobsmith",
+				Repo: "dollarshaveclub/foo-bar",
+				Pr:   99,
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("repo/pr: should have succeeded: %v", err)
+				}
+				if len(qas) != 1 {
+					return fmt.Errorf("repo/pr: unexpected length: %v", len(qas))
+				}
+				if qas[0].Name != "foo-bar" {
+					return fmt.Errorf("repo/pr: bad qa: %v", qas[0].Name)
+				}
+				return nil
+			},
+		},
+		{
+			name: "by source sha",
+			opts: models.EnvSearchParameters{
+				User:      "joshritter",
+				SourceSHA: "372829sskskskdkdke499394",
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("source sha: should have succeeded: %v", err)
+				}
+				if len(qas) != 2 {
+					return fmt.Errorf("source sha: unexpected length: %v", len(qas))
+				}
+				for _, qa := range qas {
+					if qa.SourceSHA != "372829sskskskdkdke499394" {
+						return fmt.Errorf("source sha: bad qa")
+					}
+				}
+				return nil
+			},
+		},
+		{
+			name: "by source branch",
+			opts: models.EnvSearchParameters{
+				User:         "marykatherine",
+				SourceBranch: "feature-crash-the-site",
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("source branch: should have succeeded: %v", err)
+				}
+				if len(qas) != 1 {
+					return fmt.Errorf("source branch:unexpected length: %v", len(qas))
+				}
+				if qas[0].Name != "foo-baz" {
+					return fmt.Errorf("source branch:bad qa: %v", qas[0].Name)
+				}
+				return nil
+			},
+		},
+		{
+			name: "by user only",
+			opts: models.EnvSearchParameters{
+				User: "bobsmith",
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("user: should have succeeded: %v", err)
+				}
+				if len(qas) != 1 {
+					return fmt.Errorf("user: unexpected length: %v", len(qas))
+				}
+				if qas[0].Name != "foo-bar" {
+					return fmt.Errorf("user: bad qa: %v", qas[0].Name)
+				}
+				return nil
+			},
+		},
+		{
+			name: "by status",
+			opts: models.EnvSearchParameters{
+				User:   "marykatherine",
+				Status: models.Success,
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("status: should have succeeded: %v", err)
+				}
+				if len(qas) != 1 {
+					return fmt.Errorf("status: unexpected length: %v", len(qas))
+				}
+				return nil
+			},
+		},
+		{
+			name: "by repo, source branch, user and status",
+			opts: models.EnvSearchParameters{
+				User:         "alicejones",
+				Repo:         "dollarshaveclub/foo-bar",
+				SourceBranch: "feature-sell-moar-stuff",
+				Status:       models.Success,
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("multi 1: should have succeeded: %v", err)
+				}
+				if len(qas) != 1 {
+					return fmt.Errorf("multi 1: unexpected length: %v", len(qas))
+				}
+				if qas[0].Name != "foo-bar-2" {
+					return fmt.Errorf("multi 1: bad qa: %v", qas[0].Name)
+				}
+				return nil
+			},
+		},
+		{
+			name: "by repo and status = success",
+			opts: models.EnvSearchParameters{
+				User:   "joshritter",
+				Repo:   "dollarshaveclub/biz-baz",
+				Status: models.Success,
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("repo + status success: should have succeeded: %v", err)
+				}
+				if len(qas) != 2 {
+					return fmt.Errorf("repo + status success: unexpected length: %v", len(qas))
+				}
+				return nil
+			},
+		},
+		{
+			name: "by repo and status = destroyed",
+			opts: models.EnvSearchParameters{
+				User:   "joshritter",
+				Repo:   "dollarshaveclub/biz-baz",
+				Status: models.Destroyed,
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("repo + status destroyed: should have succeeded: %v", err)
+				}
+				if len(qas) != 1 {
+					return fmt.Errorf("repo + status destroyed: unexpected length: %v", len(qas))
+				}
+				if qas[0].Name != "biz-baz" {
+					return fmt.Errorf("repo + status destroyed: unexpected name: %v", qas[0].Name)
+				}
+				return nil
+			},
+		},
+		{
+			name: "by repo, source branch, user and status",
+			opts: models.EnvSearchParameters{
+				User:         "notalicejones",
+				Repo:         "dollarshaveclub/foo-bar",
+				SourceBranch: "feature-sell-moar-stuff",
+				Status:       models.Success,
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("multi 2: should have succeeded: %v", err)
+				}
+				if len(qas) != 0 {
+					return fmt.Errorf("multi 2: expected no results: %v", qas)
+				}
+				return nil
+			},
+		},
+		{
+			name: "by multiple statuses",
+			opts: models.EnvSearchParameters{
+				User:     "marykatherine",
+				Statuses: []EnvironmentStatus{models.Destroyed, models.Failure},
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("statuses: should have succeeded: %v", err)
+				}
+				if len(qas) != 1 {
+					return fmt.Errorf("statuses: expected 1, got: %v", len(qas))
+				}
+				return nil
+			},
+		},
+		{
+			name: "by multiple statuses",
+			opts: models.EnvSearchParameters{
+				User:     "joshritter",
+				Statuses: []EnvironmentStatus{models.Destroyed, models.Failure},
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("statuses: should have succeeded: %v", err)
+				}
+				if len(qas) != 1 {
+					return fmt.Errorf("statuses: expected 1, got: %v", len(qas))
+				}
+				return nil
+			},
+		},
+		{
+			name: "by created since",
+			opts: models.EnvSearchParameters{
+				CreatedSince: 2 * 24 * time.Hour,
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("created since: should have succeeded: %v", err)
+				}
+				if len(qas) != 2 {
+					return fmt.Errorf("created since: expected 2, got: %v", len(qas))
+				}
+				return nil
+			},
+		},
+		{
+			name: "by created since, user and multiple statuses",
+			opts: models.EnvSearchParameters{
+				User:         "bobsmith",
+				CreatedSince: 2 * 24 * time.Hour,
+				Statuses:     []EnvironmentStatus{models.Success, models.Spawned, models.Updating, models.Failure},
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("multi userenvs: should have succeeded: %v", err)
+				}
+				if len(qas) != 1 {
+					return fmt.Errorf("multi userenvs: expected 1, got: %v", len(qas))
+				}
+				return nil
+			},
+		},
+		{
+			name: "by multiple repos",
+			opts: models.EnvSearchParameters{
+				User:  "joshritter",
+				Repos: []string{"dollarshaveclub/foo-bar", "dollarshaveclub/biz-baz"},
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err != nil {
+					return fmt.Errorf("multi repos: should have succeeded: %v", err)
+				}
+				if len(qas) != 3 {
+					return fmt.Errorf("multi repos: expected 3, got: %v", len(qas))
+				}
+				return nil
+			},
+		},
+		{
+			name: "error for repo and repos",
+			opts: models.EnvSearchParameters{
+				User:  "alicejones",
+				Repo:  "dollarshaveclub/something",
+				Repos: []string{"dollarshaveclub/foo-bar", "dollarshaveclub/biz-baz"},
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err == nil {
+					return fmt.Errorf("expected error for both repo and repos")
+				}
+				return nil
+			},
+		},
+		{
+			name: "error for status and statuses",
+			opts: models.EnvSearchParameters{
+				User:     "alicejones",
+				Status:   models.Success,
+				Statuses: []EnvironmentStatus{models.Spawned, models.Updating, models.Failure},
+			},
+			verifyfunc: func(qas []models.QAEnvironment, err error) error {
+				if err == nil {
+					return fmt.Errorf("expected error for both status and statuses")
+				}
+				return nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.verifyfunc(dl.Search(context.Background(), tt.opts)); err != nil {
+				t.Errorf("subtest %v failed: %v", tt.name, err)
+			}
+		})
+	}
+}
+
 func TestDataLayerGetMostRecentEmpty(t *testing.T) {
 	dl, tdl := NewTestDataLayer(t)
 	if err := tdl.Setup(testDataPath); err != nil {
@@ -907,6 +1223,43 @@ func TestDataLayerGetMostRecentOrdering(t *testing.T) {
 		expectedPrefix := now.AddDate(0, 0, -i).Format("2006-01-02")
 		if !strings.HasPrefix(got, expectedPrefix) {
 			t.Fatalf("bad ordering: got %s, expected prefix %s: %v\n", got, expectedPrefix, qas)
+		}
+	}
+}
+
+func TestDataLayerGetMostRecentForUserEmpty(t *testing.T) {
+	dl, tdl := NewTestDataLayer(t)
+	if err := tdl.Setup(testDataPath); err != nil {
+		t.Fatalf("error setting up test database: %v", err)
+	}
+	defer tdl.TearDown()
+	user := "nonexistant"
+	qas, err := dl.GetMostRecentForUser(context.Background(), user, 0)
+	if err != nil {
+		t.Fatalf("should have succeeded: %v", err)
+	}
+	if len(qas) != 0 {
+		t.Fatalf("should have empty results: %v", qas)
+	}
+}
+
+func TestDataLayerGetMostRecentForUserFiveDays(t *testing.T) {
+	dl, tdl := NewTestDataLayer(t)
+	if err := tdl.Setup(testDataPath); err != nil {
+		t.Fatalf("error setting up test database: %v", err)
+	}
+	defer tdl.TearDown()
+	user := "alicejones"
+	qas, err := dl.GetMostRecentForUser(context.Background(), user, 5)
+	if err != nil {
+		t.Fatalf("should have succeeded: %v", err)
+	}
+	if len(qas) != 1 {
+		t.Fatalf("should have returned all envs: %v", qas)
+	}
+	for _, qa := range qas {
+		if qa.User != user {
+			t.Fatalf("should return only environments for user")
 		}
 	}
 }
@@ -1025,9 +1378,6 @@ func TestDataLayerGetK8sEnv(t *testing.T) {
 	if env.EnvName != "foo-bar" {
 		t.Fatalf("bad env name: %v", env.EnvName)
 	}
-	if env.TillerAddr != "10.10.10.10:1234" {
-		t.Fatalf("bad tiller addr: %v", env.TillerAddr)
-	}
 	if env.Created.Equal(time.Time{}) {
 		t.Fatalf("zero value for created: %v", env.Created)
 	}
@@ -1056,9 +1406,6 @@ func TestDataLayerGetK8sEnvByNamespace(t *testing.T) {
 	env := envs[0]
 	if env.EnvName != "foo-bar" {
 		t.Fatalf("bad env name: %v", env.EnvName)
-	}
-	if env.TillerAddr != "10.10.10.10:1234" {
-		t.Fatalf("bad tiller addr: %v", env.TillerAddr)
 	}
 	if env.Created.Equal(time.Time{}) {
 		t.Fatalf("zero value for created: %v", env.Created)
@@ -1097,24 +1444,6 @@ func TestDataLayerDeleteK8sEnv(t *testing.T) {
 	}
 	if err := dl.DeleteK8sEnv(context.Background(), "does-not-exist"); err != nil {
 		t.Fatalf("delete of non-extant env should have succeeded: %v", err)
-	}
-}
-
-func TestDataLayerUpdateK8sEnvTillerAddr(t *testing.T) {
-	dl, tdl := NewTestDataLayer(t)
-	if err := tdl.Setup(testDataPath); err != nil {
-		t.Fatalf("error setting up test database: %v", err)
-	}
-	defer tdl.TearDown()
-	if err := dl.UpdateK8sEnvTillerAddr(context.Background(), "foo-bar", "192.168.1.1:1234"); err != nil {
-		t.Fatalf("should have succeeded: %v", err)
-	}
-	env, err := dl.GetK8sEnv(context.Background(), "foo-bar")
-	if err != nil {
-		t.Fatalf("get env should have succeeded: %v", err)
-	}
-	if env.TillerAddr != "192.168.1.1:1234" {
-		t.Fatalf("bad tiller addr: %v", env.TillerAddr)
 	}
 }
 
@@ -1207,22 +1536,7 @@ func TestDataLayerGetEventLogsByEnvName(t *testing.T) {
 		t.Fatalf("error setting up test database: %v", err)
 	}
 	defer tdl.TearDown()
-	logs, err := dl.GetEventLogsByEnvName("foo-bar")
-	if err != nil {
-		t.Fatalf("should have succeeded: %v", err)
-	}
-	if i := len(logs); i != 2 {
-		t.Fatalf("expected length of 2: %v", i)
-	}
-}
-
-func TestDataLayerGetEventLogsWithStatusByEnvName(t *testing.T) {
-	dl, tdl := NewTestDataLayer(t)
-	if err := tdl.Setup(testDataPath); err != nil {
-		t.Fatalf("error setting up test database: %v", err)
-	}
-	defer tdl.TearDown()
-	logs, err := dl.GetEventLogsWithStatusByEnvName("foo-bar-2")
+	logs, err := dl.GetEventLogsByEnvName("foo-bar-2")
 	if err != nil {
 		t.Fatalf("should have succeeded: %v", err)
 	}
@@ -1815,45 +2129,47 @@ func TestDataLayerCreateAPIKey(t *testing.T) {
 		t.Fatalf("error setting up test database: %v", err)
 	}
 	defer tdl.TearDown()
-	ids := []uuid.UUID{}
 	requests := []models.APIKey{
 		{
 			PermissionLevel: models.WritePermission,
-			Name:            "foo write",
 			Description:     "foo write description",
 			GitHubUser:      "johnsmith",
 		},
 		{
 			PermissionLevel: models.AdminPermission,
-			Name:            "bar admin",
 			Description:     "bar admin description",
 			GitHubUser:      "jackhandy",
 		},
 		{
 			PermissionLevel: models.ReadOnlyPermission,
-			Name:            "foo read only",
 			Description:     "foo read only description",
 			GitHubUser:      "janejones",
 		},
 	}
+	tokens := []uuid.UUID{}
 	for _, r := range requests {
-		id, err := dl.CreateAPIKey(context.Background(), r.PermissionLevel, r.Name, r.Description, r.GitHubUser)
+		token, err := dl.CreateAPIKey(context.Background(), r.PermissionLevel, r.Description, r.GitHubUser)
 		if err != nil {
 			t.Fatalf("create api key should have succeeded: %v", err)
 		}
-		if id == uuid.Nil {
+		if token == uuid.Nil {
 			t.Fatal("create api key should have returned the api key id")
 		}
-		ids = append(ids, id)
+		tokens = append(tokens, token)
 
 	}
-	_, err := dl.GetAPIKeyById(context.Background(), ids[1])
-	if err != nil {
-		t.Fatalf("error getting created api key: %v", err)
+	for n, token := range tokens {
+		ak, err := dl.GetAPIKeyByToken(context.Background(), token)
+		if err != nil {
+			t.Fatalf("error getting created api key: %v", err)
+		}
+		if ak.PermissionLevel != requests[n].PermissionLevel {
+			t.Fatalf("error incorrect api key returned; expected: %v, got: %v", requests[n].PermissionLevel, ak.PermissionLevel)
+		}
 	}
 }
 
-func TestGetAPIKeyById(t *testing.T) {
+func TestGetAPIKeyByToken(t *testing.T) {
 	dl, tdl := NewTestDataLayer(t)
 	if err := tdl.Setup(testDataPath); err != nil {
 		t.Fatalf("error setting up test database: %v", err)
@@ -1863,38 +2179,38 @@ func TestGetAPIKeyById(t *testing.T) {
 		{
 			ID:              uuid.MustParse("9df12e4e-08d6-11eb-adc1-0242ac120002"),
 			PermissionLevel: models.AdminPermission,
-			Name:            "my-repo-abc",
 			Description:     "admin for my-repo-abc",
 			GitHubUser:      "janejones",
+			Token:           uuid.MustParse("a69a2832-8b50-11eb-8dcd-0242ac130003"),
 		},
 		{
 			ID:              uuid.MustParse("a5f3f316-098e-11eb-adc1-0242ac120002"),
 			PermissionLevel: models.WritePermission,
-			Name:            "my-repo-abc",
 			Description:     "write for my-repo-abc",
 			GitHubUser:      "jackhandy",
+			Token:           uuid.MustParse("b04691e0-8b50-11eb-8dcd-0242ac130003"),
 		},
 		{
 			ID:              uuid.MustParse("6985dc36-08d6-11eb-adc1-0242ac120002"),
 			PermissionLevel: models.ReadOnlyPermission,
-			Name:            "my-repo-def",
 			Description:     "read only for my-repo-def",
 			GitHubUser:      "johnsmith",
+			Token:           uuid.MustParse("9f2a9af0-8b50-11eb-8dcd-0242ac130003"),
 		},
 	}
 	for _, r := range requests {
-		apiKey, err := dl.GetAPIKeyById(context.Background(), r.ID)
+		apiKey, err := dl.GetAPIKeyByToken(context.Background(), r.Token)
 		if err != nil {
 			t.Fatalf("error getting api key: %v", err)
 		}
 		if apiKey == nil {
 			t.Fatalf("expected api key returned")
 		}
+		if apiKey.ID != r.ID {
+			t.Fatalf("unexpected api key ID: %v (wanted: %v)", apiKey.ID, r.ID)
+		}
 		if apiKey.PermissionLevel != r.PermissionLevel {
 			t.Fatalf("unexpected Permissions Level: %v (wanted: %v)", apiKey.PermissionLevel, r.PermissionLevel)
-		}
-		if apiKey.Name != r.Name {
-			t.Fatalf("unexpected name: %v (wanted: %v)", apiKey.Name, r.Name)
 		}
 		if apiKey.Description != r.Description {
 			t.Fatalf("unexpected description: %v (wanted: %v)", apiKey.Description, r.Description)
@@ -1902,10 +2218,68 @@ func TestGetAPIKeyById(t *testing.T) {
 		if apiKey.GitHubUser != r.GitHubUser {
 			t.Fatalf("unexpected github user: %v (wanted: %v)", apiKey.GitHubUser, r.GitHubUser)
 		}
+		if apiKey.Token != r.Token {
+			t.Fatalf("unexpected api key Token: %v (wanted: %v)", apiKey.Token, r.Token)
+		}
 	}
 }
 
-func TestGetAPIKeysByGithubUser(t *testing.T)  {
+func TestGetAPIKeyByID(t *testing.T) {
+	dl, tdl := NewTestDataLayer(t)
+	if err := tdl.Setup(testDataPath); err != nil {
+		t.Fatalf("error setting up test database: %v", err)
+	}
+	defer tdl.TearDown()
+	requests := []models.APIKey{
+		{
+			ID:              uuid.MustParse("9df12e4e-08d6-11eb-adc1-0242ac120002"),
+			PermissionLevel: models.AdminPermission,
+			Description:     "admin for my-repo-abc",
+			GitHubUser:      "janejones",
+			Token:           uuid.MustParse("a69a2832-8b50-11eb-8dcd-0242ac130003"),
+		},
+		{
+			ID:              uuid.MustParse("a5f3f316-098e-11eb-adc1-0242ac120002"),
+			PermissionLevel: models.WritePermission,
+			Description:     "write for my-repo-abc",
+			GitHubUser:      "jackhandy",
+			Token:           uuid.MustParse("b04691e0-8b50-11eb-8dcd-0242ac130003"),
+		},
+		{
+			ID:              uuid.MustParse("6985dc36-08d6-11eb-adc1-0242ac120002"),
+			PermissionLevel: models.ReadOnlyPermission,
+			Description:     "read only for my-repo-def",
+			GitHubUser:      "johnsmith",
+			Token:           uuid.MustParse("9f2a9af0-8b50-11eb-8dcd-0242ac130003"),
+		},
+	}
+	for _, r := range requests {
+		apiKey, err := dl.GetAPIKeyByID(context.Background(), r.ID)
+		if err != nil {
+			t.Fatalf("error getting api key: %v", err)
+		}
+		if apiKey == nil {
+			t.Fatalf("expected api key returned")
+		}
+		if apiKey.ID != r.ID {
+			t.Fatalf("unexpected api key ID: %v (wanted: %v)", apiKey.ID, r.ID)
+		}
+		if apiKey.PermissionLevel != r.PermissionLevel {
+			t.Fatalf("unexpected Permissions Level: %v (wanted: %v)", apiKey.PermissionLevel, r.PermissionLevel)
+		}
+		if apiKey.Description != r.Description {
+			t.Fatalf("unexpected description: %v (wanted: %v)", apiKey.Description, r.Description)
+		}
+		if apiKey.GitHubUser != r.GitHubUser {
+			t.Fatalf("unexpected github user: %v (wanted: %v)", apiKey.GitHubUser, r.GitHubUser)
+		}
+		if apiKey.Token != r.Token {
+			t.Fatalf("unexpected api key Token: %v (wanted: %v)", apiKey.Token, r.Token)
+		}
+	}
+}
+
+func TestGetAPIKeysByGithubUser(t *testing.T) {
 	dl, tdl := NewTestDataLayer(t)
 	if err := tdl.Setup(testDataPath); err != nil {
 		t.Fatalf("error setting up test database: %v", err)
@@ -1923,7 +2297,7 @@ func TestGetAPIKeysByGithubUser(t *testing.T)  {
 	}
 }
 
-func TestUpdateAPIKeyLastUsed(t *testing.T)  {
+func TestUpdateAPIKeyLastUsed(t *testing.T) {
 	dl, tdl := NewTestDataLayer(t)
 	if err := tdl.Setup(testDataPath); err != nil {
 		t.Fatalf("error setting up test database: %v", err)
@@ -1931,79 +2305,79 @@ func TestUpdateAPIKeyLastUsed(t *testing.T)  {
 	defer tdl.TearDown()
 	req := models.APIKey{
 		PermissionLevel: models.ReadOnlyPermission,
-		Name:            "foo read only",
 		Description:     "foo read only description",
 		GitHubUser:      "jimbob",
 	}
-	id, err := dl.CreateAPIKey(context.Background(), req.PermissionLevel, req.Name, req.Description, req.GitHubUser)
+	token, err := dl.CreateAPIKey(context.Background(), req.PermissionLevel, req.Description, req.GitHubUser)
 	if err != nil {
 		t.Fatalf("create api key should have succeeded: %v", err)
 	}
-	if id == uuid.Nil {
+	if token == uuid.Nil {
 		t.Fatal("create api key should have returned the api key id")
 	}
-	apikey, err := dl.GetAPIKeyById(context.Background(), id)
+	apikey, err := dl.GetAPIKeyByToken(context.Background(), token)
 	if err != nil {
 		t.Fatalf("error getting api key: %v", err)
 	}
 	lu := apikey.LastUsed.Time
 	time.Sleep(500 * time.Millisecond)
-	err = dl.UpdateAPIKeyLastUsed(context.Background(), id)
+	err = dl.UpdateAPIKeyLastUsed(context.Background(), token)
 	if err != nil {
 		t.Fatalf("error updating api key: %v", err)
 	}
-	updated, err := dl.GetAPIKeyById(context.Background(), id)
+	updated, err := dl.GetAPIKeyByToken(context.Background(), token)
 	if err != nil {
 		t.Fatalf("error getting api key: %v", err)
 	}
-	if  lu == updated.LastUsed.Time {
+	if lu == updated.LastUsed.Time {
 		t.Fatalf("expected last used to update; original: %v, updated: %v", lu, updated.LastUsed.Time)
 	}
 }
 
-func TestDeleteAPIKey(t *testing.T)  {
+func TestDeleteAPIKeyByID(t *testing.T) {
 	dl, tdl := NewTestDataLayer(t)
 	if err := tdl.Setup(testDataPath); err != nil {
 		t.Fatalf("error setting up test database: %v", err)
 	}
 	defer tdl.TearDown()
-	ids := []uuid.UUID{}
+	tokens := []uuid.UUID{}
 	requests := []models.APIKey{
 		{
 			PermissionLevel: models.WritePermission,
-			Name:            "foo write",
 			Description:     "foo write description",
 			GitHubUser:      "johnsmith",
 		},
 		{
 			PermissionLevel: models.AdminPermission,
-			Name:            "bar admin",
 			Description:     "bar admin description",
 			GitHubUser:      "jackhandy",
 		},
 		{
 			PermissionLevel: models.ReadOnlyPermission,
-			Name:            "foo read only",
 			Description:     "foo read only description",
 			GitHubUser:      "janejones",
 		},
 	}
 	for _, r := range requests {
-		id, err := dl.CreateAPIKey(context.Background(),r.PermissionLevel, r.Name, r.Description, r.GitHubUser)
+		token, err := dl.CreateAPIKey(context.Background(), r.PermissionLevel, r.Description, r.GitHubUser)
 		if err != nil {
 			t.Fatalf("create api key should have succeeded: %v", err)
 		}
-		if id == uuid.Nil {
-			t.Fatal("create api key should have returned the api key id")
+		if token == uuid.Nil {
+			t.Fatal("create api key should have returned the api key token")
 		}
-		ids = append(ids, id)
+		tokens = append(tokens, token)
 
 	}
-	err := dl.DeleteAPIKey(context.Background(), ids[1])
+	apikey, err := dl.GetAPIKeyByToken(context.Background(), tokens[1])
+	if apikey == nil {
+		t.Fatalf("error getting api key: %v", err)
+	}
+	err = dl.DeleteAPIKeyByID(context.Background(), apikey.ID)
 	if err != nil {
 		t.Fatalf("error getting created api key: %v", err)
 	}
-	apikey, _ := dl.GetAPIKeyById(context.Background(), ids[1])
+	apikey, _ = dl.GetAPIKeyByToken(context.Background(), apikey.Token)
 	if apikey != nil {
 		t.Fatalf("error api key was not deleted: %v", apikey)
 	}

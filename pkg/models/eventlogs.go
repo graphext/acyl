@@ -30,35 +30,23 @@ type EventLog struct {
 }
 
 func (el EventLog) Columns() string {
-	return strings.Join([]string{"id", "created", "updated", "env_name", "repo", "pull_request", "webhook_payload", "github_delivery_id", "log", "log_key"}, ",")
-}
-
-func (el EventLog) ColumnsWithoutID() string {
-	return strings.Join([]string{"created", "updated", "env_name", "repo", "pull_request", "webhook_payload", "github_delivery_id", "log", "log_key"}, ",")
-}
-
-func (el EventLog) ColumnsWithStatus() string {
 	return strings.Join([]string{"id", "created", "updated", "env_name", "repo", "pull_request", "webhook_payload", "github_delivery_id", "log", "log_key", "status"}, ",")
 }
 
-func (el EventLog) ColumnsWithoutIDWithStatus() string {
+func (el EventLog) ColumnsWithoutID() string {
 	return strings.Join([]string{"created", "updated", "env_name", "repo", "pull_request", "webhook_payload", "github_delivery_id", "log", "log_key", "status"}, ",")
 }
 
 func (el EventLog) InsertColumns() string {
-	return strings.Join([]string{"id", "env_name", "repo", "pull_request", "webhook_payload", "github_delivery_id", "log", "log_key"}, ",")
+	return strings.Join([]string{"id", "env_name", "repo", "pull_request", "webhook_payload", "github_delivery_id", "log", "log_key", "status"}, ",")
 }
 
 func (el *EventLog) ScanValues() []interface{} {
-	return []interface{}{&el.ID, &el.Created, &el.Updated, &el.EnvName, &el.Repo, &el.PullRequest, &el.WebhookPayload, &el.GitHubDeliveryID, pq.Array(&el.Log), &el.LogKey}
-}
-
-func (el *EventLog) ScanValuesWithStatus() []interface{} {
 	return []interface{}{&el.ID, &el.Created, &el.Updated, &el.EnvName, &el.Repo, &el.PullRequest, &el.WebhookPayload, &el.GitHubDeliveryID, pq.Array(&el.Log), &el.LogKey, &el.Status}
 }
 
 func (el *EventLog) InsertValues() []interface{} {
-	return []interface{}{&el.ID, &el.EnvName, &el.Repo, &el.PullRequest, &el.WebhookPayload, &el.GitHubDeliveryID, pq.Array(&el.Log), &el.LogKey}
+	return []interface{}{&el.ID, &el.EnvName, &el.Repo, &el.PullRequest, &el.WebhookPayload, &el.GitHubDeliveryID, pq.Array(&el.Log), &el.LogKey, &el.Status}
 }
 
 func (el EventLog) InsertParams() string {

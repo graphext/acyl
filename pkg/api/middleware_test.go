@@ -88,7 +88,7 @@ func TestMiddlewareInvalidMasterAPIKeyAuthFailure(t *testing.T) {
 
 func TestMiddlewareValidAPIKeyAuthGetSuccess(t *testing.T) {
 	dl := persistence.NewFakeDataLayer()
-	id, _ := dl.CreateAPIKey(context.Background(), models.ReadOnlyPermission, "foo", "foo description", "jackhandy")
+	id, _ := dl.CreateAPIKey(context.Background(), models.ReadOnlyPermission, "foo description", "jackhandy")
 	authMiddleware.apiKeys = []string{testValidMasterAPIKey}
 	authMiddleware.DL = dl
 	rc := httptest.NewRecorder()
@@ -119,7 +119,7 @@ func TestMiddlewareInvalidAPIKeyAuthParseFailure(t *testing.T) {
 
 func TestMiddlewareValidAPIKeyAuthReadOnlyDeleteFailure(t *testing.T) {
 	dl := persistence.NewFakeDataLayer()
-	id, _ := dl.CreateAPIKey(context.Background(), models.WritePermission, "foo", "foo description", "johnsmith")
+	id, _ := dl.CreateAPIKey(context.Background(), models.WritePermission, "foo description", "johnsmith")
 	authMiddleware.apiKeys = []string{testValidMasterAPIKey}
 	authMiddleware.DL = dl
 	rc := httptest.NewRecorder()
@@ -135,7 +135,7 @@ func TestMiddlewareValidAPIKeyAuthReadOnlyDeleteFailure(t *testing.T) {
 
 func TestMiddlewareValidAPIKeyAuthAdminGetSuccess(t *testing.T) {
 	dl := persistence.NewFakeDataLayer()
-	id, _ := dl.CreateAPIKey(context.Background(), models.AdminPermission, "foo", "foo description", "janejones")
+	id, _ := dl.CreateAPIKey(context.Background(), models.AdminPermission, "foo description", "janejones")
 	authMiddleware.apiKeys = []string{testValidMasterAPIKey}
 	authMiddleware.DL = dl
 	rc := httptest.NewRecorder()

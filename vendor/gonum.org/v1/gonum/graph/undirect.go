@@ -11,29 +11,19 @@ type Undirect struct {
 
 var _ Undirected = Undirect{}
 
-// Has returns whether the node exists within the graph.
-func (g Undirect) Has(id int64) bool { return g.G.Has(id) }
+// Node returns the node with the given ID if it exists in the graph,
+// and nil otherwise.
+func (g Undirect) Node(id int64) Node { return g.G.Node(id) }
 
 // Nodes returns all the nodes in the graph.
-func (g Undirect) Nodes() []Node { return g.G.Nodes() }
+func (g Undirect) Nodes() Nodes { return g.G.Nodes() }
 
 // From returns all nodes in g that can be reached directly from u.
-func (g Undirect) From(uid int64) []Node {
-	var nodes []Node
-	seen := make(map[int64]struct{})
-	for _, n := range g.G.From(uid) {
-		seen[n.ID()] = struct{}{}
-		nodes = append(nodes, n)
+func (g Undirect) From(uid int64) Nodes {
+	if g.G.Node(uid) == nil {
+		return Empty
 	}
-	for _, n := range g.G.To(uid) {
-		id := n.ID()
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[n.ID()] = struct{}{}
-		nodes = append(nodes, n)
-	}
-	return nodes
+	return newNodeIteratorPair(g.G.From(uid), g.G.To(uid))
 }
 
 // HasEdgeBetween returns whether an edge exists between nodes x and y.
@@ -90,29 +80,19 @@ var (
 	_ WeightedUndirected = UndirectWeighted{}
 )
 
-// Has returns whether the node exists within the graph.
-func (g UndirectWeighted) Has(id int64) bool { return g.G.Has(id) }
+// Node returns the node with the given ID if it exists in the graph,
+// and nil otherwise.
+func (g UndirectWeighted) Node(id int64) Node { return g.G.Node(id) }
 
 // Nodes returns all the nodes in the graph.
-func (g UndirectWeighted) Nodes() []Node { return g.G.Nodes() }
+func (g UndirectWeighted) Nodes() Nodes { return g.G.Nodes() }
 
 // From returns all nodes in g that can be reached directly from u.
-func (g UndirectWeighted) From(uid int64) []Node {
-	var nodes []Node
-	seen := make(map[int64]struct{})
-	for _, n := range g.G.From(uid) {
-		seen[n.ID()] = struct{}{}
-		nodes = append(nodes, n)
+func (g UndirectWeighted) From(uid int64) Nodes {
+	if g.G.Node(uid) == nil {
+		return Empty
 	}
-	for _, n := range g.G.To(uid) {
-		id := n.ID()
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[n.ID()] = struct{}{}
-		nodes = append(nodes, n)
-	}
-	return nodes
+	return newNodeIteratorPair(g.G.From(uid), g.G.To(uid))
 }
 
 // HasEdgeBetween returns whether an edge exists between nodes x and y.
@@ -216,11 +196,92 @@ func (e EdgePair) To() Node {
 	return nil
 }
 
+// ReversedEdge returns a new Edge with the end point of the
+// edges in the pair swapped.
+func (e EdgePair) ReversedEdge() Edge {
+	if e[0] != nil {
+		e[0] = e[0].ReversedEdge()
+	}
+	if e[1] != nil {
+		e[1] = e[1].ReversedEdge()
+	}
+	return e
+}
+
 // WeightedEdgePair is an opposed pair of directed edges.
 type WeightedEdgePair struct {
 	EdgePair
 	W float64
 }
 
+// ReversedEdge returns a new Edge with the end point of the
+// edges in the pair swapped.
+func (e WeightedEdgePair) ReversedEdge() Edge {
+	e.EdgePair = e.EdgePair.ReversedEdge().(EdgePair)
+	return e
+}
+
 // Weight returns the merged edge weights of the two edges.
 func (e WeightedEdgePair) Weight() float64 { return e.W }
+
+// nodeIteratorPair combines two Nodes to produce a single stream of
+// unique nodes.
+type nodeIteratorPair struct {
+	a, b Nodes
+
+	curr Node
+
+	idx, cnt int
+
+	// unique indicates the node in b with the key ID is unique.
+	unique map[int64]bool
+}
+
+func newNodeIteratorPair(a, b Nodes) *nodeIteratorPair {
+	n := nodeIteratorPair{a: a, b: b, unique: make(map[int64]bool)}
+	for n.b.Next() {
+		n.unique[n.b.Node().ID()] = true
+		n.cnt++
+	}
+	n.b.Reset()
+	for n.a.Next() {
+		if _, ok := n.unique[n.a.Node().ID()]; !ok {
+			n.cnt++
+		}
+		n.unique[n.a.Node().ID()] = false
+	}
+	n.a.Reset()
+	return &n
+}
+
+func (n *nodeIteratorPair) Len() int {
+	return n.cnt - n.idx
+}
+
+func (n *nodeIteratorPair) Next() bool {
+	if n.a.Next() {
+		n.idx++
+		n.curr = n.a.Node()
+		return true
+	}
+	for n.b.Next() {
+		if n.unique[n.b.Node().ID()] {
+			n.idx++
+			n.curr = n.b.Node()
+			return true
+		}
+	}
+	n.curr = nil
+	return false
+}
+
+func (n *nodeIteratorPair) Node() Node {
+	return n.curr
+}
+
+func (n *nodeIteratorPair) Reset() {
+	n.idx = 0
+	n.curr = nil
+	n.a.Reset()
+	n.b.Reset()
+}

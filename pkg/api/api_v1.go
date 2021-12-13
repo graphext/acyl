@@ -13,7 +13,6 @@ import (
 	"github.com/dollarshaveclub/acyl/pkg/models"
 	"github.com/dollarshaveclub/acyl/pkg/persistence"
 	"github.com/dollarshaveclub/acyl/pkg/spawner"
-	"github.com/gorilla/mux"
 	muxtrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gorilla/mux"
 )
 
@@ -91,9 +90,9 @@ func (api *v1api) register(r *muxtrace.Router) error {
 		return fmt.Errorf("router is nil")
 	}
 	// v1 routes
-	r.HandleFunc("/v1/envs/_search", middlewareChain(authMiddleware.tokenAuth(api.envSearchHandler, models.ReadOnlyPermission))).Methods("GET")
-	r.HandleFunc("/v1/envs/_recent", middlewareChain(authMiddleware.tokenAuth(api.envRecentHandler, models.ReadOnlyPermission))).Methods("GET")
-	r.HandleFunc("/v1/envs/{name}", middlewareChain(authMiddleware.tokenAuth(api.envDetailHandler, models.ReadOnlyPermission))).Methods("GET")
+	r.HandleFunc("/v1/envs/_search", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorize(api.envSearchHandler), models.ReadOnlyPermission))).Methods("GET")
+	r.HandleFunc("/v1/envs/_recent", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorize(api.envRecentHandler), models.ReadOnlyPermission))).Methods("GET")
+	r.HandleFunc("/v1/envs/{name}", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorizeEnv(api.envDetailHandler), models.ReadOnlyPermission))).Methods("GET")
 	return nil
 }
 
@@ -112,18 +111,12 @@ func (api *v1api) marshalQAEnvironments(qas []models.QAEnvironment, w http.Respo
 }
 
 func (api *v1api) envDetailHandler(w http.ResponseWriter, r *http.Request) {
-	name := mux.Vars(r)["name"]
-	qa, err := api.dl.GetQAEnvironmentConsistently(r.Context(), name)
-	if err != nil {
-		api.internalError(w, fmt.Errorf("error getting environment: %v", err))
+	qa, ok := r.Context().Value(qaEnvCtxKey).(models.QAEnvironment)
+	if !ok {
+		api.internalError(w, fmt.Errorf("unexpected qa env type from context: %T", qa))
 		return
 	}
-	if qa == nil {
-		api.notfoundError(w)
-		return
-	}
-
-	output := v1QAEnvironmentFromQAEnvironment(qa)
+	output := v1QAEnvironmentFromQAEnvironment(&qa)
 	j, err := json.Marshal(output)
 	if err != nil {
 		api.internalError(w, fmt.Errorf("error marshaling environment: %v", err))
@@ -134,6 +127,11 @@ func (api *v1api) envDetailHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *v1api) envSearchHandler(w http.ResponseWriter, r *http.Request) {
+	apikey, ok := r.Context().Value(apiKeyCtxKey).(models.APIKey)
+	if !ok {
+		api.internalError(w, fmt.Errorf("unexpected api key type from context: %T", apikey))
+		return
+	}
 	qvars := r.URL.Query()
 	if _, ok := qvars["pr"]; ok {
 		if _, ok := qvars["repo"]; !ok {
@@ -184,14 +182,26 @@ func (api *v1api) envSearchHandler(w http.ResponseWriter, r *http.Request) {
 			ops.Status = s
 		}
 	}
-	qas, err := api.dl.Search(r.Context(), ops)
+	qas := []models.QAEnvironment{}
+	var err error
+	if apikey.PermissionLevel == models.AdminPermission {
+		qas, err = api.dl.Search(r.Context(), ops)
+	} else {
+		qas, err = api.dl.SearchEnvsForUser(r.Context(), apikey.GitHubUser, ops)
+	}
 	if err != nil {
 		api.internalError(w, fmt.Errorf("error searching in DB: %v", err))
+		return
 	}
 	api.marshalQAEnvironments(qas, w)
 }
 
 func (api *v1api) envRecentHandler(w http.ResponseWriter, r *http.Request) {
+	apikey, ok := r.Context().Value(apiKeyCtxKey).(models.APIKey)
+	if !ok {
+		api.internalError(w, fmt.Errorf("unexpected api key type from context: %T", apikey))
+		return
+	}
 	qvars := r.URL.Query()
 	daysstr, ok := qvars["days"]
 	if !ok {
@@ -202,14 +212,19 @@ func (api *v1api) envRecentHandler(w http.ResponseWriter, r *http.Request) {
 		api.badRequestError(w, fmt.Errorf("invalid days value: %v", daysstr[0]))
 		return
 	}
+	qas := []models.QAEnvironment{}
+	if apikey.PermissionLevel == models.AdminPermission {
+		qas, err = api.dl.GetMostRecent(r.Context(), uint(days))
+	} else {
+		qas, err = api.dl.GetMostRecentForUser(r.Context(), apikey.GitHubUser, uint(days))
+	}
+	if err != nil {
+		api.internalError(w, fmt.Errorf("error getting recent in DB: %v", err))
+		return
+	}
 	var includeDestroyed bool
 	if val, ok := qvars["include_destroyed"]; ok {
 		includeDestroyed = val[0] == "true" || val[0] == "yes" || val[0] == "1"
-	}
-	qas, err := api.dl.GetMostRecent(r.Context(), uint(days))
-	if err != nil {
-		api.internalError(w, fmt.Errorf("error performing query: %v", err))
-		return
 	}
 	if !includeDestroyed {
 		before := make([]models.QAEnvironment, len(qas))

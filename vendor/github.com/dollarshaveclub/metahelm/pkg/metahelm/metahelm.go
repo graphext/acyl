@@ -4,20 +4,22 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"regexp"
 	"sync"
 	"time"
 
 	"github.com/dollarshaveclub/metahelm/pkg/dag"
-	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
+	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart/loader"
+	"helm.sh/helm/v3/pkg/chartutil"
+	"helm.sh/helm/v3/pkg/release"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
 	appsv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	batchv1 "k8s.io/client-go/kubernetes/typed/batch/v1"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/helm/pkg/helm"
-	rls "k8s.io/helm/pkg/proto/hapi/services"
-	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
 )
 
 // K8sClient describes an object that functions as a Kubernetes client
@@ -28,12 +30,17 @@ type K8sClient interface {
 	BatchV1() batchv1.BatchV1Interface
 }
 
-// HelmClient describes an object that functions as a Helm client
-type HelmClient interface {
-	InstallReleaseWithContext(ctx context.Context, chstr, ns string, opts ...helm.InstallOption) (*rls.InstallReleaseResponse, error)
-	UpdateReleaseWithContext(ctx context.Context, rlsName string, chstr string, opts ...helm.UpdateOption) (*rls.UpdateReleaseResponse, error)
-	ListReleases(opts ...helm.ReleaseListOption) (*rls.ListReleasesResponse, error)
-	ReleaseContent(rlsName string, opts ...helm.ContentOption) (*rls.GetReleaseContentResponse, error)
+func ctxFn(ctx context.Context, fn func() error) error {
+	errc := make(chan error, 1)
+	go func() {
+		errc <- fn()
+	}()
+	select {
+	case <-ctx.Done():
+		return errors.New("context was cancelled")
+	case err := <-errc:
+		return err
+	}
 }
 
 // LogFunc is a function that logs a formatted string somewhere
@@ -41,8 +48,8 @@ type LogFunc func(string, ...interface{})
 
 // Manager is an object that manages installation of chart graphs
 type Manager struct {
-	K8c  K8sClient
-	HC   HelmClient
+	K8c  kubernetes.Interface
+	HCfg *action.Configuration
 	LogF LogFunc
 }
 
@@ -53,10 +60,10 @@ func (m *Manager) log(msg string, args ...interface{}) {
 }
 
 type options struct {
-	k8sNamespace, tillerNamespace, releaseNamePrefix string
-	installCallback                                  InstallCallback
-	completedCallback                                CompletedCallback
-	timeout                                          time.Duration
+	k8sNamespace, releaseNamePrefix string
+	installCallback                 InstallCallback
+	completedCallback               CompletedCallback
+	timeout                         time.Duration
 }
 
 type InstallOption func(*options)
@@ -65,13 +72,6 @@ type InstallOption func(*options)
 func WithK8sNamespace(ns string) InstallOption {
 	return func(op *options) {
 		op.k8sNamespace = ns
-	}
-}
-
-// WithTillerNamespace specifies the namespace where the Tiller service can be found
-func WithTillerNamespace(tns string) InstallOption {
-	return func(op *options) {
-		op.tillerNamespace = tns
 	}
 }
 
@@ -244,11 +244,19 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 			}
 		}
 		c := cmap[obj.Name()]
+		chart, err := loader.Load(c.Location)
+		if err != nil {
+			return fmt.Errorf("error loading chart from location %s: %w", c.Location, err)
+		}
+		vals, err := chartutil.ReadValues(c.ValueOverrides)
+		if err != nil {
+			return fmt.Errorf("error reading value overrides from raw YAML: %w", err)
+		}
 		var opstr string
 		var exist bool
 		if upgrade {
 			var err error
-			exist, err = releaseExists(m.HC, ops.k8sNamespace, ops.releaseNamePrefix+c.Title)
+			exist, err = releaseExists(ctx, m.HCfg, ops.k8sNamespace, ops.releaseNamePrefix+c.Title)
 			if err != nil {
 				return errors.Wrap(err, "error error getting release names")
 			}
@@ -259,47 +267,53 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 				return fmt.Errorf("chart not found in release map: %v", c.Title)
 			}
 			opstr = "upgrade"
-			uops := []helm.UpdateOption{
-				// By not setting either ResetValues or ReuseValues, Helm will reuse the current release values
-				// only if no values are provided in the update request
-				helm.UpgradeWait(c.WaitUntilHelmSaysItsReady),
-				helm.UpgradeTimeout(int64(c.WaitTimeout.Seconds())),
-			}
-			// work around a bug in helm 2.9 that causes a YAML error with empty overrides and ReuseValues
-			vo := map[string]interface{}{}
-			err := yaml.Unmarshal(c.ValueOverrides, &vo)
-			if err != nil {
-				return errors.Wrap(err, "error unmarshaling value overrides")
-			}
-			if len(vo) != 0 {
-				uops = append(uops, helm.UpdateValueOverrides(c.ValueOverrides))
-			}
 			m.log("%v: running helm upgrade", obj.Name())
-			_, err = m.HC.UpdateReleaseWithContext(ctx, relname, c.Location, uops...)
+			upgrade := action.NewUpgrade(m.HCfg)
+			upgrade.Wait = true
+			upgrade.Timeout = c.WaitTimeout
+			if err := ctxFn(ctx, func() error {
+				if _, err := upgrade.Run(relname, chart, vals); err != nil {
+					return m.charterror(ctx, err, ops, c, relname, "upgrading")
+				}
+				return nil
+			}); err != nil {
+				return err
+			}
 			if ops.completedCallback != nil {
 				m.log("%v: running completed callback", obj.Name())
 				ops.completedCallback(*cmap[obj.Name()], err)
 			}
 			if err != nil {
-				return m.charterror(err, ops, c, "upgrading")
+				return m.charterror(ctx, err, ops, c, relname, "upgrading")
 			}
 		} else {
 			opstr = "installation"
 			m.log("%v: running helm install", obj.Name())
-			resp, err := m.HC.InstallReleaseWithContext(ctx, c.Location, ops.k8sNamespace,
-				helm.ValueOverrides(c.ValueOverrides),
-				helm.ReleaseName(ReleaseName(ops.releaseNamePrefix+c.Title)),
-				helm.InstallWait(c.WaitUntilHelmSaysItsReady),
-				helm.InstallTimeout(int64(c.WaitTimeout.Seconds())))
+			install := action.NewInstall(m.HCfg)
+			install.Wait = true
+			install.ReleaseName = ReleaseName(ops.releaseNamePrefix + c.Title)
+			install.Namespace = ops.k8sNamespace
+			install.Timeout = c.WaitTimeout
+			var release *release.Release
+			if err := ctxFn(ctx, func() error {
+				var err error
+				release, err = install.Run(chart, vals)
+				if err != nil {
+					return m.charterror(ctx, err, ops, c, install.ReleaseName, "installing")
+				}
+				return nil
+			}); err != nil {
+				return err
+			}
 			if ops.completedCallback != nil {
 				m.log("%v: running completed callback", obj.Name())
 				ops.completedCallback(*cmap[obj.Name()], err)
 			}
 			if err != nil {
-				return m.charterror(err, ops, c, "installing")
+				return m.charterror(ctx, err, ops, c, install.ReleaseName, "installing")
 			}
 			rn.Lock()
-			rn.rmap[c.Title] = resp.Release.Name
+			rn.rmap[c.Title] = release.Name
 			rn.Unlock()
 		}
 		m.log("%v: %v complete; waiting for health", opstr, obj.Name())
@@ -321,21 +335,29 @@ func (m *Manager) installOrUpgrade(ctx context.Context, upgradeMap ReleaseMap, u
 	return rn.rmap, nil
 }
 
-func (m *Manager) charterror(err error, ops *options, c *Chart, operation string) error {
+func (m *Manager) charterror(ctx context.Context, err error, ops *options, c *Chart, releaseName, operation string) error {
 	ce := NewChartError(err)
 	if c.WaitUntilHelmSaysItsReady {
-		rc, err2 := m.HC.ReleaseContent(ReleaseName(ops.releaseNamePrefix + c.Title))
-		if err2 != nil || rc == nil || rc.Release == nil {
-			m.log("error fetching helm release: %v", err2)
-			return ce
+		get := action.NewGet(m.HCfg)
+		var release *release.Release
+		if err := ctxFn(ctx, func() error {
+			var err2 error
+			release, err2 = get.Run(releaseName)
+			if err != nil || release == nil {
+				m.log(fmt.Sprintf("error fetching helm release: %v", err2))
+				return ce
+			}
+			return nil
+		}); err != nil {
+			return err
 		}
-		if err2 := ce.PopulateFromRelease(rc.Release, m.K8c, MaxPodLogLines); err2 != nil {
+		if err2 := ce.PopulateFromRelease(ctx, release, m.K8c, MaxPodLogLines); err2 != nil {
 			m.log("error populating chart error from release: %v", err2)
 			return errors.Wrap(err, "error "+operation+" chart")
 		}
 		return ce
 	}
-	if err2 := ce.PopulateFromDeployment(ops.k8sNamespace, c.WaitUntilDeployment, m.K8c, MaxPodLogLines); err2 != nil {
+	if err2 := ce.PopulateFromDeployment(ctx, ops.k8sNamespace, c.WaitUntilDeployment, m.K8c, MaxPodLogLines); err2 != nil {
 		m.log("error populating chart error from deployment: %v", err2)
 		return errors.Wrap(err, "error "+operation+" chart")
 	}
@@ -356,36 +378,44 @@ func (m *Manager) waitForChart(ctx context.Context, c *Chart, ns string) error {
 		return nil
 	}
 	return wait.Poll(ChartWaitPollInterval, c.WaitTimeout, func() (bool, error) {
-		d, err := m.K8c.AppsV1().Deployments(ns).Get(c.WaitUntilDeployment, metav1.GetOptions{})
+		d, err := m.K8c.AppsV1().Deployments(ns).Get(ctx, c.WaitUntilDeployment, metav1.GetOptions{})
 		if err != nil || d.Spec.Replicas == nil {
 			m.log("%v: error getting deployment (retrying): %v", c.Name(), err)
 			return false, nil // the deployment may not initially exist immediately after installing chart
 		}
-
-		rs, err := deploymentutil.GetNewReplicaSet(d, m.K8c.AppsV1())
-		if err != nil {
-			return false, errors.Wrap(err, "error getting new replica set")
-		}
-
-		if rs != nil {
+		if d.Spec.Replicas != nil {
 			needed := 1
 			if c.DeploymentHealthIndication == AllPodsHealthy {
 				needed = int(*d.Spec.Replicas)
 			}
-			m.log("%v: %v ready replicas, %v needed", c.Name(), rs.Status.ReadyReplicas, needed)
-			return int(rs.Status.ReadyReplicas) >= needed, nil
+			m.log("%v: %v ready replicas, %v needed", c.Name(), d.Status.ReadyReplicas, needed)
+			return int(d.Status.ReadyReplicas) >= needed, nil
 		}
 		return false, nil
 	})
 }
 
-func releaseExists(helmClient HelmClient, namespace string, releaseName string) (bool, error) {
-	releases, err := helmClient.ListReleases(helm.ReleaseListNamespace(namespace), helm.ReleaseListFilter("^"+releaseName+"$"))
-	if err != nil {
-		return false, errors.Wrap(err, "error getting release name")
+func releaseExists(ctx context.Context, cfg *action.Configuration, namespace string, releaseName string) (bool, error) {
+	list := action.NewList(cfg)
+	list.AllNamespaces = true
+	list.Filter = fmt.Sprintf("^%s$", regexp.QuoteMeta(releaseName))
+	var releases []*release.Release
+	if err := ctxFn(ctx, func() error {
+		var err error
+		releases, err = list.Run()
+		if err != nil {
+			return fmt.Errorf("error getting release name: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return false, err
 	}
-
-	return releases != nil && releases.Count == 1, nil
+	for _, release := range releases {
+		if release.Namespace == namespace {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // ValidateCharts verifies that a set of charts is constructed properly, particularly with respect

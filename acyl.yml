@@ -34,12 +34,11 @@ dependencies:
   direct:
     - repo: militarpancho/furan
       name: furan
-      default_branch: master
       value_overrides:
         - "replicaCount=3"
         - "image.tag=886fb0764219869b45f1bb4356a5776358f2f4e5"
         - "image.repository=eu.gcr.io/graphext-development/furan"
-
+      default_branch: master
     - chart_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql'
       chart_vars_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql/values.yaml'
       value_overrides:

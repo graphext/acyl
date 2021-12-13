@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/pkg/errors"
 
@@ -29,7 +30,10 @@ func middlewareChain(f http.HandlerFunc, m ...middleware) http.HandlerFunc {
 }
 
 const (
-	apiKeyHeader = "API-Key"
+	apiKeyHeader   = "API-Key"		// string
+	apiKeyCtxKey   = "api_key"      // models.APIKey
+	qaEnvCtxKey    = "qa_env"       // models.QAEnvironment
+	eventLogCtxKey = "event_log"    // models.EventLog
 )
 
 // authMiddleware checks for correct API key header or aborts with Unauthorized
@@ -37,7 +41,7 @@ var authMiddleware = reqAuthorizor{}
 
 type reqAuthorizor struct {
 	apiKeys []string
-	DL      persistence.APIKeyDataLayer
+	DL      persistence.DataLayer
 }
 
 func (ra reqAuthorizor) tokenAuth(f http.HandlerFunc, minPermission models.PermissionLevel) http.HandlerFunc {
@@ -49,7 +53,7 @@ func (ra reqAuthorizor) tokenAuth(f http.HandlerFunc, minPermission models.Permi
 		if key != "" {
 			for _, k := range ra.apiKeys {
 				if key == k {
-					f(w, r)
+					f(w, r.Clone(context.WithValue(r.Context(), apiKeyCtxKey, models.APIKey{PermissionLevel: models.AdminPermission})))
 					return
 				}
 			}
@@ -59,7 +63,7 @@ func (ra reqAuthorizor) tokenAuth(f http.HandlerFunc, minPermission models.Permi
 				w.WriteHeader(http.StatusForbidden)
 				return
 			}
-			apikey, err := authMiddleware.DL.GetAPIKeyById(r.Context(), keyID)
+			apikey, err := authMiddleware.DL.GetAPIKeyByToken(r.Context(), keyID)
 			if err != nil {
 				log("error getting api key: %v", err)
 				w.WriteHeader(http.StatusInternalServerError)
@@ -73,12 +77,124 @@ func (ra reqAuthorizor) tokenAuth(f http.HandlerFunc, minPermission models.Permi
 						w.WriteHeader(http.StatusInternalServerError)
 						return
 					}
-					f(w, r)
+					f(w, r.Clone(context.WithValue(r.Context(), apiKeyCtxKey, *apikey)))
 					return
 				}
 			}
 		}
 		w.WriteHeader(http.StatusUnauthorized)
+	}
+}
+
+// authorizeEnv() requires tokenAuth to be called first or will fail
+func (ra reqAuthorizor) authorizeEnv(f http.HandlerFunc) http.HandlerFunc {
+	log := func(msg string, args ...interface{}) {
+		log.Printf("authorizeEnv: "+msg, args...)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		// abort if the API Key not found in context
+		apikey, ok := r.Context().Value(apiKeyCtxKey).(models.APIKey)
+		if !ok {
+			log("request not authorized")
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		name := mux.Vars(r)["name"]
+		qa, err := ra.DL.GetQAEnvironment(r.Context(), name)
+		if err != nil {
+			log("error getting environment: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if qa == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if apikey.PermissionLevel != models.AdminPermission {
+			if apikey.GitHubUser != qa.User {
+				log("request not authorized")
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+		}
+		f(w, r.Clone(context.WithValue(r.Context(), qaEnvCtxKey, *qa)))
+	}
+}
+
+// authorizeEventLog() requires tokenAuth to be called first or will fail
+func (ra reqAuthorizor) authorizeEventLog(f http.HandlerFunc) http.HandlerFunc {
+	log := func(msg string, args ...interface{}) {
+		log.Printf("authorizeEventLog: "+msg, args...)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		// abort if the API Key not found in context
+		apikey, ok := r.Context().Value(apiKeyCtxKey).(models.APIKey)
+		if !ok {
+			log("request not authorized")
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		idstr := mux.Vars(r)["id"]
+		id, err := uuid.Parse(idstr)
+		if err != nil {
+			log(errors.Wrap(err,"error parsing id").Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		el, err := ra.DL.GetEventLogByID(id)
+		if err != nil {
+			log(errors.Wrap(err, "error fetching event logs").Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if el == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		qa, err := ra.DL.GetQAEnvironment(r.Context(), el.EnvName)
+		if err != nil {
+			log("error getting environment: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if qa == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if apikey.PermissionLevel != models.AdminPermission {
+			if apikey.GitHubUser != qa.User {
+				log("request not authorized")
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+		}
+		f(w, r.Clone(context.WithValue(r.Context(), eventLogCtxKey, *el)))
+	}
+}
+
+// authorize() requires tokenAuth to be called first or will fail
+// does not validate the user name, just that its present or admin token
+func (ra reqAuthorizor) authorize(f http.HandlerFunc) http.HandlerFunc {
+	log := func(msg string, args ...interface{}) {
+		log.Printf("authorize: "+msg, args...)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		// abort if the API Key not found in context
+		apikey, ok := r.Context().Value(apiKeyCtxKey).(models.APIKey)
+		if !ok {
+			log("request not authorized")
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		if apikey.PermissionLevel != models.AdminPermission {
+			if apikey.GitHubUser == "" {
+				log("request not authorized")
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+		}
+		f(w, r)
+		return
 	}
 }
 

@@ -250,32 +250,31 @@ type KubernetesEnvironment struct {
 	RepoConfigYAML  []byte      `yaml:"config" json:"config"`
 	ConfigSignature []byte      `yaml:"config_signature" json:"config_signature"`
 	RefMapJSON      string      `yaml:"ref_map_json" json:"ref_map_json"`
-	TillerAddr      string      `yaml:"tiller_addr" json:"tiller_addr"`
 	Privileged      bool        `yaml:"privileged" json:"privileged"`
 }
 
 func (ke KubernetesEnvironment) Columns() string {
-	return strings.Join([]string{"created", "updated", "env_name", "namespace", "repo_config_yaml", "config_signature", "ref_map_json", "tiller_addr", "privileged"}, ",")
+	return strings.Join([]string{"created", "updated", "env_name", "namespace", "repo_config_yaml", "config_signature", "ref_map_json", "privileged"}, ",")
 }
 
 func (ke KubernetesEnvironment) InsertColumns() string {
-	return strings.Join([]string{"env_name", "namespace", "repo_config_yaml", "config_signature", "ref_map_json", "tiller_addr", "privileged"}, ",")
+	return strings.Join([]string{"env_name", "namespace", "repo_config_yaml", "config_signature", "ref_map_json", "privileged"}, ",")
 }
 
 func (ke KubernetesEnvironment) UpdateColumns() string {
-	return strings.Join([]string{"namespace", "repo_config_yaml", "config_signature", "ref_map_json", "tiller_addr", "privileged"}, ",")
+	return strings.Join([]string{"namespace", "repo_config_yaml", "config_signature", "ref_map_json", "privileged"}, ",")
 }
 
 func (ke *KubernetesEnvironment) ScanValues() []interface{} {
-	return []interface{}{&ke.Created, &ke.Updated, &ke.EnvName, &ke.Namespace, &ke.RepoConfigYAML, &ke.ConfigSignature, &ke.RefMapJSON, &ke.TillerAddr, &ke.Privileged}
+	return []interface{}{&ke.Created, &ke.Updated, &ke.EnvName, &ke.Namespace, &ke.RepoConfigYAML, &ke.ConfigSignature, &ke.RefMapJSON, &ke.Privileged}
 }
 
 func (ke *KubernetesEnvironment) InsertValues() []interface{} {
-	return []interface{}{&ke.EnvName, &ke.Namespace, &ke.RepoConfigYAML, &ke.ConfigSignature, &ke.RefMapJSON, &ke.TillerAddr, &ke.Privileged}
+	return []interface{}{&ke.EnvName, &ke.Namespace, &ke.RepoConfigYAML, &ke.ConfigSignature, &ke.RefMapJSON, &ke.Privileged}
 }
 
 func (ke *KubernetesEnvironment) UpdateValues() []interface{} {
-	return []interface{}{&ke.Namespace, &ke.RepoConfigYAML, &ke.ConfigSignature, &ke.RefMapJSON, &ke.TillerAddr, &ke.Privileged}
+	return []interface{}{&ke.Namespace, &ke.RepoConfigYAML, &ke.ConfigSignature, &ke.RefMapJSON, &ke.Privileged}
 }
 
 func (ke KubernetesEnvironment) params(colfunc func() string) string {

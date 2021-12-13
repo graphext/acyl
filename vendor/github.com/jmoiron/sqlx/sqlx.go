@@ -64,11 +64,7 @@ func isScannable(t reflect.Type) bool {
 
 	// it's not important that we use the right mapper for this particular object,
 	// we're only concerned on how many exported fields this struct has
-	m := mapper()
-	if len(m.TypeMap(t).Index) == 0 {
-		return true
-	}
-	return false
+	return len(mapper().TypeMap(t).Index) == 0
 }
 
 // ColScanner is an interface used by MapScan and SliceScan
@@ -149,15 +145,15 @@ func isUnsafe(i interface{}) bool {
 }
 
 func mapperFor(i interface{}) *reflectx.Mapper {
-	switch i.(type) {
+	switch i := i.(type) {
 	case DB:
-		return i.(DB).Mapper
+		return i.Mapper
 	case *DB:
-		return i.(*DB).Mapper
+		return i.Mapper
 	case Tx:
-		return i.(Tx).Mapper
+		return i.Mapper
 	case *Tx:
-		return i.(*Tx).Mapper
+		return i.Mapper
 	default:
 		return mapper()
 	}
@@ -226,6 +222,14 @@ func (r *Row) Columns() ([]string, error) {
 		return []string{}, r.err
 	}
 	return r.rows.Columns()
+}
+
+// ColumnTypes returns the underlying sql.Rows.ColumnTypes(), or the deferred error
+func (r *Row) ColumnTypes() ([]*sql.ColumnType, error) {
+	if r.err != nil {
+		return []*sql.ColumnType{}, r.err
+	}
+	return r.rows.ColumnTypes()
 }
 
 // Err returns the error encountered while scanning.
@@ -372,6 +376,14 @@ func (db *DB) PrepareNamed(query string) (*NamedStmt, error) {
 	return prepareNamed(db, query)
 }
 
+// Conn is a wrapper around sql.Conn with extra functionality
+type Conn struct {
+	*sql.Conn
+	driverName string
+	unsafe     bool
+	Mapper     *reflectx.Mapper
+}
+
 // Tx is an sqlx wrapper around sql.Tx with extra functionality
 type Tx struct {
 	*sql.Tx
@@ -463,8 +475,6 @@ func (tx *Tx) Stmtx(stmt interface{}) *Stmt {
 		s = v.Stmt
 	case *Stmt:
 		s = v.Stmt
-	case sql.Stmt:
-		s = &v
 	case *sql.Stmt:
 		s = v
 	default:
@@ -593,7 +603,7 @@ func (r *Rows) StructScan(dest interface{}) error {
 		return errors.New("must pass a pointer, not a value, to StructScan destination")
 	}
 
-	v = reflect.Indirect(v)
+	v = v.Elem()
 
 	if !r.started {
 		columns, err := r.Columns()
@@ -627,10 +637,14 @@ func (r *Rows) StructScan(dest interface{}) error {
 func Connect(driverName, dataSourceName string) (*DB, error) {
 	db, err := Open(driverName, dataSourceName)
 	if err != nil {
-		return db, err
+		return nil, err
 	}
 	err = db.Ping()
-	return db, err
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
 }
 
 // MustConnect connects to a database and panics on error.

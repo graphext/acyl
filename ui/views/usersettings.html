@@ -1,0 +1,295 @@
+<html lang="en">
+    <head>
+        {{ template "header-head" . }}
+        <script type="text/javascript">
+            const apiBaseURL = "{{ .APIBaseURL }}";
+        </script>
+        <style>
+            .user-settings {
+                font-weight: bold;
+                flex-wrap: wrap;
+                padding-top: 15px;
+                padding-bottom: 15px;
+                padding-left: 15px;
+                padding-right: 15px;
+                margin-left: 15px;
+                margin-right: 15px;
+            }
+            .card-header .fa {
+                font-size: x-large;
+                transition: .4s transform ease-in-out;
+                display: inline-block;
+            }
+            .card-header .collapsed .fa {
+                transform: rotate(-90deg);
+                font-size: x-large;
+                transition: .4s transform ease-in-out;
+                display: inline-block;
+            }
+            .hidden {
+                display: none;
+            }
+        </style>
+    </head>
+    <body class="acyl-ui">
+        {{ template "header-nav" . }}
+        <div class="container">
+            <div class="row">
+                <div class="col">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="{{ .APIBaseURL }}/ui/home">Home</a></li>
+                            <li class="breadcrumb-item" aria-current="page" id="bc-user-settings">User Settings</li>
+                            <li class="breadcrumb-item" aria-current="user" id="bc-user">{{ .GitHubUser }}</li>
+                        </ol>
+                    </nav>
+                </div>
+            </div>
+            <!-- API Keys -->
+            <div class="row" id="apiKeysMain">
+                <div class="col user-settings bg-light text-dark rounded">
+                    <div class="row">
+                        <div class="col-xs-2 text-center pl-3">
+                            <h3 id="apiKeysHeading">API Keys</h3>
+                        </div>
+                        <div class="col-xs-2 text-center px-3 mt-1">
+                            <button
+                                    class="btn btn-link bg-primary text-light btn-sm text-decoration-none rounded fas px-2"
+                                    type="button"
+                                    id="newAPIKeysCreateBtn"
+                                    data-toggle="modal"
+                                    data-target="#newAPIKeyConfirmationModal"
+                                    data-backdrop="static"
+                                    data-keyboard="false"
+                                    title="New API Key"
+                            >
+                                New &#xf084
+                            </button>
+                        </div>
+                        <div class="col text-right mt-1">
+                            <div class="row hidden" id="apiDocsHeading">
+                                <div class="col">
+                                    <button
+                                            class="btn btn-link bg-dark text-light btn-sm text-decoration-none rounded fas px-2"
+                                            type="button"
+                                            title="API Documentation"
+                                    >
+                                        <a
+                                                class="text-decoration-none bg-dark text-light"
+                                                target="_blank"
+                                                href="{{ .APIBaseURL }}/ui/apidocs/index.html"
+                                        >
+                                            &#xf059
+                                        </a>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row" id="noAPIKeysCreateNew" aria-hidden="true">
+                        <div class="col-sm-4 px-0"></div>
+                        <div class="col-sm-4 px-0">
+                            <h3 class="text-center">Create a Key!</h3>
+                            <hr>
+                            <div class="row" style="align-content: center">
+                                <div class="col-sm-1"></div>
+                                <div class="col-xs-10 pt-1">
+                                    <h6 class="text-center">Click to learn more about the Acyl API</h6>
+                                </div>
+                                <div class="col-sm-1">
+                                    <button
+                                            class="btn btn-link bg-dark text-light btn-sm text-decoration-none rounded fas mr-1"
+                                            type="button"
+                                            title="API Documentation"
+                                    >
+                                        <a
+                                                class="text-decoration-none bg-dark text-light"
+                                                target="_blank"
+                                                href="{{ .APIBaseURL }}/ui/apidocs/index.html"
+                                        >
+                                            &#xf059
+                                        </a>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-4 px-0"></div>
+                    </div>
+                    <div class="row hidden" id="apiKeys">
+                        <div class="col" >
+                            <div class="row" id="apiKeysHeading">
+                                <div class="col-sm-1"></div>
+                                <div class="col-sm-11 pl-3">Description</div>
+                            </div>
+                            <div class="accordion" id="apiKeysBody"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Delete API Key Modal -->
+            <div
+                    class="modal fade"
+                    id="deleteConfirmationModal"
+                    tabindex="-1"
+                    role="dialog"
+                    aria-labelledby="deleteConfirmationModal"
+                    aria-hidden="true"
+            >
+                <div class="modal-dialog" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Delete API Key</h5>
+                            <button
+                                    type="button"
+                                    id="deleteConfirmationModalClose"
+                                    class="close"
+                                    data-dismiss="modal"
+                                    aria-label="Close"
+                            >
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row hidden" id="deleteTokenErrorAlert">
+                                <div class="col">
+                                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                        <strong>Error</strong>
+                                        <p id="deleteTokenError"></p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col">
+                                    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                                        <div class="row">
+                                            <div class="col-1 fas">&#xf1e2</div>
+                                            <div class="col">
+                                                <p class="mb-0">API token deletion takes effect immediately and cannot be undone!</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button
+                                    type="button"
+                                    id="deleteConfirmationModalCloseMain"
+                                    class="btn btn-secondary"
+                                    data-dismiss="modal"
+                                    aria-label="Close"
+                            >
+                                Close
+                            </button>
+                            <button
+                                    type="button"
+                                    id="deleteConfirmationModalDelete"
+                                    class="btn btn-primary"
+                                    data-dismiss="modal"
+                                    aria-label="Delete"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- New API Key Modal -->
+            <div
+                    class="modal fade"
+                    id="newAPIKeyConfirmationModal"
+                    tabindex="-1"
+                    role="dialog"
+                    aria-labelledby="newAPIKeysCreateBtn"
+                    aria-hidden="true"
+            >
+                <div class="modal-dialog" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">New API Key</h5>
+                            <button
+                                    type="button"
+                                    id="newAPIKeyConfirmationModalClose"
+                                    class="close"
+                                    data-dismiss="modal"
+                                    aria-label="Close"
+                            >
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <!-- New API Key Response Alert -->
+                            <div class="row hidden" id="newTokenAlert">
+                                <div class="col">
+                                    <div class="alert alert-success py-2" role="alert" id="newTokenID">
+                                        <h5 class="alert-heading" id="newTokenID"></h5>
+                                    </div>
+                                    <div class="alert alert-warning" role="alert">
+                                        <div class="row">
+                                            <div class="col-1 fas">&#xf071</div>
+                                            <div class="col">
+                                                <p class="mb-0">Please make note of this token, it will not be displayed again!</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row hidden" id="newTokenErrorAlert">
+                                <div class="col">
+                                    <div class="alert alert-warning alert-dismissible fade show pb-1" role="alert">
+                                        <strong>Error</strong>
+                                        <p id="newTokenError"></p>
+                                        <button type="button" class="close" aria-label="Close" onclick=clearTokenError()>
+                                            <span aria-hidden="true">&times;</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row" id="newTokenForm">
+                                <div class="col">
+                                    <form autocomplete="off">
+                                        <div class="form-group">
+                                            <label for="newAPIKeyDescription">Description</label>
+                                            <input type="input" class="form-control" id="newAPIKeyDescription" placeholder="(optional)" value="" autocomplete="off">
+                                        </div>
+                                        <div class="form-check m-0 p-0">
+                                            <label for="newAPIKeyPermissionSelect">Permission Level</label>
+                                            <select class="form-control" id="newAPIKeyPermissionSelect" autocomplete="off">
+                                                <option>Read</option>
+                                                <option>Write</option>
+                                            </select>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button
+                                    type="button"
+                                    id="newAPIKeyConfirmationModalCloseMain"
+                                    class="btn btn-secondary"
+                                    data-dismiss="modal"
+                                    aria-label="Close"
+                            >
+                                Close
+                            </button>
+                            <button
+                                    type="submit"
+                                    id="newAPIKeyConfirmationModalCreate"
+                                    class="btn btn-primary"
+                                    aria-label="Create"
+                            >
+                                Create
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{ template "footer-scripts" . }}
+        <script
+                type="text/javascript"
+                src="{{ .APIBaseURL }}/ui/static/user.js"
+        ></script>
+    </body>
+</html>

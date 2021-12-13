@@ -55,16 +55,6 @@ func (pg *PGLayer) DeleteK8sEnv(ctx context.Context, name string) error {
 	return errors.Wrap(err, "error deleting k8s environment")
 }
 
-// UpdateK8sEnvTillerAddr updates an existing k8s environment with the provided tiller address
-func (pg *PGLayer) UpdateK8sEnvTillerAddr(ctx context.Context, envname, taddr string) error {
-	if isCancelled(ctx) {
-		return errors.Wrap(ctx.Err(), "error update k8s env tiller address")
-	}
-	q := `UPDATE kubernetes_environments SET tiller_addr = $1 WHERE env_name = $2;`
-	_, err := pg.db.ExecContext(ctx, q, taddr, envname)
-	return errors.Wrap(err, "error updating k8s environment")
-}
-
 // UpdateK8sEnvConfigSignature updates an existing k8s environment config signature
 func (pg *PGLayer) UpdateK8sEnvConfigSignature(ctx context.Context, name string, confSig [32]byte) error {
 	if isCancelled(ctx) {

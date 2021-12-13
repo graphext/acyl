@@ -13,6 +13,11 @@ import (
 
 	kubernetestrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/k8s.io/client-go/kubernetes"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+	"helm.sh/helm/v3/pkg/action"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/restmapper"
+	"k8s.io/helm/pkg/strvals"
 
 	"github.com/dollarshaveclub/acyl/pkg/config"
 	"github.com/dollarshaveclub/acyl/pkg/eventlogger"
@@ -28,9 +33,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/transport"
 
@@ -38,10 +42,6 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/helm/cmd/helm/installer"
-	"k8s.io/helm/pkg/helm"
-	"k8s.io/helm/pkg/helm/portforwarder"
-	"k8s.io/helm/pkg/strvals"
 )
 
 // LogFunc is a function that logs a formatted string somewhere
@@ -72,48 +72,16 @@ type KubernetesReporter interface {
 // metrics prefix
 var mpfx = "metahelm."
 
-type HelmClientFactoryFunc func(tillerNS, tillerAddr string, rcfg *rest.Config, kc kubernetes.Interface) (helm.Interface, error)
 type K8sClientFactoryFunc func(kubecfgpath, kubectx string) (*kubernetes.Clientset, *rest.Config, error)
+type MetahelmManagerFactoryFunc func(ctx context.Context, kc kubernetes.Interface, hccfg config.HelmClientConfig, namespace string) (*metahelm.Manager, error)
 
-// Defaults for Tiller configuration options, if not specified otherwise
+// Defaults configuration options, if not specified otherwise
 const (
-	DefaultTillerImage                   = "helmpack/tiller:v2.17.0"
-	DefaultTillerPort                    = 44134
-	DefaultTillerDeploymentName          = "tiller-deploy"
-	DefaultTillerServerConnectRetryDelay = 10 * time.Second
-	DefaultTillerServerConnectRetries    = 40
-	MaxPodContainerLogLines              = 1000
+	DefaultHelmDriver 		= "secrets"
+	MaxPodContainerLogLines = 1000
+	DefaultRestConfigQPS    = 50.0
+	DefaultRestConfigBurst  = 100
 )
-
-// TillerConfig models the configuration parameters for Helm Tiller in namespaces
-type TillerConfig struct {
-	ServerConnectRetries    uint
-	ServerConnectRetryDelay time.Duration
-	DeploymentName          string
-	Port                    uint
-	Image                   string
-}
-
-// SetDefaults returns a TillerConfig with empty value fields filled in with defaults
-func (tcfg TillerConfig) SetDefaults() TillerConfig {
-	out := tcfg
-	if out.Image == "" {
-		out.Image = DefaultTillerImage
-	}
-	if out.Port == 0 {
-		out.Port = DefaultTillerPort
-	}
-	if out.DeploymentName == "" {
-		out.DeploymentName = DefaultTillerDeploymentName
-	}
-	if out.ServerConnectRetryDelay == 0 {
-		out.ServerConnectRetryDelay = DefaultTillerServerConnectRetryDelay
-	}
-	if out.ServerConnectRetries == 0 {
-		out.ServerConnectRetries = DefaultTillerServerConnectRetries
-	}
-	return out
-}
 
 // ChartInstaller is an object that manages namespaces and install/upgrades/deletes metahelm chart graphs
 type ChartInstaller struct {
@@ -121,20 +89,20 @@ type ChartInstaller struct {
 	kc               kubernetes.Interface
 	rcfg             *rest.Config
 	kcf              K8sClientFactoryFunc
-	hcf              HelmClientFactoryFunc
-	tcfg             TillerConfig
 	dl               persistence.DataLayer
 	fs               billy.Filesystem
 	mc               metrics.Collector
 	k8sgroupbindings map[string]string
 	k8srepowhitelist []string
 	k8ssecretinjs    map[string]config.K8sSecret
+	mhmf             MetahelmManagerFactoryFunc
+	hccfg            config.HelmClientConfig
 }
 
 var _ Installer = &ChartInstaller{}
 
 // NewChartInstaller returns a ChartInstaller configured with an in-cluster K8s clientset
-func NewChartInstaller(ib images.Builder, dl persistence.DataLayer, fs billy.Filesystem, mc metrics.Collector, k8sGroupBindings map[string]string, k8sRepoWhitelist []string, k8sSecretInjs map[string]config.K8sSecret, tcfg TillerConfig, k8sJWTPath string, enableK8sTracing bool) (*ChartInstaller, error) {
+func NewChartInstaller(ib images.Builder, dl persistence.DataLayer, fs billy.Filesystem, mc metrics.Collector, k8sGroupBindings map[string]string, k8sRepoWhitelist []string, k8sSecretInjs map[string]config.K8sSecret, k8sJWTPath string, enableK8sTracing bool, hccfg config.HelmClientConfig) (*ChartInstaller, error) {
 	kc, rcfg, err := NewInClusterK8sClientset(k8sJWTPath, enableK8sTracing)
 	if err != nil {
 		return nil, fmt.Errorf("error getting k8s client: %w", err)
@@ -143,35 +111,20 @@ func NewChartInstaller(ib images.Builder, dl persistence.DataLayer, fs billy.Fil
 		ib:               ib,
 		kc:               kc,
 		rcfg:             rcfg,
-		hcf:              NewInClusterHelmClient,
-		tcfg:             tcfg.SetDefaults(),
 		dl:               dl,
 		fs:               fs,
 		mc:               mc,
 		k8sgroupbindings: k8sGroupBindings,
 		k8srepowhitelist: k8sRepoWhitelist,
 		k8ssecretinjs:    k8sSecretInjs,
-	}, nil
-}
-
-// NewChartInstallerWithoutK8sClient returns a ChartInstaller without a k8s client, for use in testing/CLI.
-func NewChartInstallerWithoutK8sClient(ib images.Builder, dl persistence.DataLayer, fs billy.Filesystem, mc metrics.Collector, k8sGroupBindings map[string]string, k8sRepoWhitelist []string, k8sSecretInjs map[string]config.K8sSecret, tcfg TillerConfig) (*ChartInstaller, error) {
-	return &ChartInstaller{
-		ib:               ib,
-		hcf:              NewInClusterHelmClient,
-		tcfg:             tcfg.SetDefaults(),
-		dl:               dl,
-		fs:               fs,
-		mc:               mc,
-		k8sgroupbindings: k8sGroupBindings,
-		k8srepowhitelist: k8sRepoWhitelist,
-		k8ssecretinjs:    k8sSecretInjs,
+		mhmf:             NewInClusterHelmConfiguration,
+		hccfg:            hccfg,
 	}, nil
 }
 
 // NewChartInstallerWithClientsetFromContext returns a ChartInstaller configured with a K8s clientset from the current kubeconfig context
-func NewChartInstallerWithClientsetFromContext(ib images.Builder, dl persistence.DataLayer, fs billy.Filesystem, mc metrics.Collector, k8sGroupBindings map[string]string, k8sRepoWhitelist []string, k8sSecretInjs map[string]config.K8sSecret, tcfg TillerConfig, kubeconfigpath, kubectx string) (*ChartInstaller, error) {
-	kc, rcfg, err := NewKubecfgContextK8sClientset(kubeconfigpath, kubectx)
+func NewChartInstallerWithClientsetFromContext(ib images.Builder, dl persistence.DataLayer, fs billy.Filesystem, mc metrics.Collector, k8sGroupBindings map[string]string, k8sRepoWhitelist []string, k8sSecretInjs map[string]config.K8sSecret, kubeconfigpath string, hccfg config.HelmClientConfig) (*ChartInstaller, error) {
+	kc, rcfg, err := NewKubecfgContextK8sClientset(kubeconfigpath, hccfg.KubeContext)
 	if err != nil {
 		return nil, fmt.Errorf("error getting k8s client: %w", err)
 	}
@@ -179,23 +132,21 @@ func NewChartInstallerWithClientsetFromContext(ib images.Builder, dl persistence
 		ib:               ib,
 		kc:               kc,
 		rcfg:             rcfg,
-		hcf:              NewTunneledHelmClient,
-		tcfg:             tcfg.SetDefaults(),
 		dl:               dl,
 		fs:               fs,
 		mc:               mc,
 		k8sgroupbindings: k8sGroupBindings,
 		k8srepowhitelist: k8sRepoWhitelist,
 		k8ssecretinjs:    k8sSecretInjs,
+		mhmf:             NewInClusterHelmConfiguration,
+		hccfg:            hccfg,
 	}, nil
 }
 
 func NewKubecfgContextK8sClientset(kubecfgpath, kubectx string) (*kubernetes.Clientset, *rest.Config, error) {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	rules.DefaultClientConfig = &clientcmd.DefaultClientConfig
-
 	overrides := &clientcmd.ConfigOverrides{ClusterDefaults: clientcmd.ClusterDefaults}
-
 	if kubectx != "" {
 		overrides.CurrentContext = kubectx
 	}
@@ -244,20 +195,94 @@ func wrapTransport(k8sJWTPath string, enableK8sTracing bool) func(rt http.RoundT
 	}
 }
 
-// NewInClusterHelmClient is a HelmClientFactoryFunc that returns a Helm client configured for use within the k8s cluster
-func NewInClusterHelmClient(_, tillerAddr string, _ *rest.Config, _ kubernetes.Interface) (helm.Interface, error) {
-	return helm.NewClient(helm.Host(tillerAddr), helm.ConnectTimeout(int64(60*time.Second))), nil
+func (g *restClientGetter) ToRESTConfig() (*rest.Config, error) {
+	return g.restConfig, nil
 }
 
-// NewTunneledHelmClient is a HelmClientFactoryFunc that returns a Helm client configured for use with a localhost tunnel to the k8s cluster
-func NewTunneledHelmClient(tillerNS, _ string, rcfg *rest.Config, kc kubernetes.Interface) (helm.Interface, error) {
-	tunnel, err := portforwarder.New(tillerNS, kc, rcfg)
-	if err != nil {
-		return nil, fmt.Errorf("error establishing k8s tunnel: %w", err)
-	}
-	tillerHost := fmt.Sprintf("127.0.0.1:%d", tunnel.Local)
+func (g *restClientGetter) ToDiscoveryClient() (discovery.CachedDiscoveryInterface, error) {
+	return g.discoveryClient, nil
+}
 
-	return helm.NewClient(helm.Host(tillerHost), helm.ConnectTimeout(int64(60*time.Second))), nil
+func (g *restClientGetter) ToRESTMapper() (meta.RESTMapper, error) {
+	return g.restMapper, nil
+}
+
+func (g *restClientGetter) ToRawKubeConfigLoader() clientcmd.ClientConfig {
+	return g.rawKubeConfigLoader
+}
+
+type cachedDiscoveryInterface struct {
+	discovery.DiscoveryInterface
+}
+
+var _ discovery.CachedDiscoveryInterface = &cachedDiscoveryInterface{}
+
+func (d *cachedDiscoveryInterface) Fresh() bool {
+	return false
+}
+
+func (d *cachedDiscoveryInterface) Invalidate() {}
+
+type restClientGetter struct {
+	restConfig          *rest.Config
+	discoveryClient     discovery.CachedDiscoveryInterface
+	restMapper          meta.RESTMapper
+	rawKubeConfigLoader clientcmd.ClientConfig
+}
+
+var _ genericclioptions.RESTClientGetter = &restClientGetter{}
+
+func newRestClientGetter(namespace, kctx string) (*restClientGetter, error) {
+	rules := clientcmd.NewDefaultClientConfigLoadingRules()
+	rules.DefaultClientConfig = &clientcmd.DefaultClientConfig
+	overrides := &clientcmd.ConfigOverrides{ClusterDefaults: clientcmd.ClusterDefaults}
+	if kctx != "" {
+		overrides.CurrentContext = kctx
+	}
+	if namespace != "" {
+		overrides.Context.Namespace = namespace
+	}
+	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
+	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("could not get Kubernetes config for context %q: %s", kctx, err)
+	}
+	restConfig.QPS = DefaultRestConfigQPS
+	restConfig.Burst = DefaultRestConfigBurst
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("could not get Kubernetes client: %w", err)
+	}
+	discoveryClient := &cachedDiscoveryInterface{clientset.DiscoveryClient}
+	restMapper := restmapper.NewDeferredDiscoveryRESTMapper(discoveryClient)
+	return &restClientGetter{
+		restConfig:          restConfig,
+		discoveryClient:     discoveryClient,
+		restMapper:          restMapper,
+		rawKubeConfigLoader: clientConfig,
+	}, nil
+}
+
+// NewInClusterHelmConfiguration is a HelmClientConfigurationFunc that returns a Helm v3 client configured for use within the k8s cluster
+func NewInClusterHelmConfiguration(ctx context.Context, kc kubernetes.Interface, hccfg config.HelmClientConfig, namespace string) (*metahelm.Manager, error) {
+	if  hccfg.HelmDriver == "" {
+		hccfg.HelmDriver = DefaultHelmDriver
+	}
+	getter, err := newRestClientGetter(namespace, hccfg.KubeContext)
+	if err != nil {
+		return nil, fmt.Errorf("error getting kube client: %w", err)
+	}
+	cfg := &action.Configuration{}
+	if err := cfg.Init(getter, namespace, hccfg.HelmDriver, func(format string, v ...interface{}) {}); err != nil {
+		return nil, fmt.Errorf("error initializing Helm config: %w", err)
+	}
+	return &metahelm.Manager{
+		K8c: kc,
+		HCfg: cfg,
+		LogF: metahelm.LogFunc(func(msg string, args ...interface{}) {
+			eventlogger.GetLogger(ctx).Printf("metahelm: "+msg, args...)
+		}),
+	}, nil
 }
 
 func (ci ChartInstaller) log(ctx context.Context, msg string, args ...interface{}) {
@@ -336,7 +361,7 @@ func (ci ChartInstaller) installOrUpgradeIntoExisting(ctx context.Context, env *
 		err = fmt.Errorf("no extant k8s environment for env: %v", env.Env.Name)
 		return err
 	}
-	err = ci.installOrUpgradeCharts(ctx, k8senv.TillerAddr, k8senv.Namespace, csl, env, b, upgrade)
+	err = ci.installOrUpgradeCharts(ctx, k8senv.Namespace, csl, env, b, upgrade)
 	return err
 }
 
@@ -372,7 +397,6 @@ func (ci ChartInstaller) BuildAndInstallCharts(ctx context.Context, newenv *EnvI
 	if err := ci.writeK8sEnvironment(ctx, newenv, ns); err != nil {
 		return fmt.Errorf("error writing k8s environment: %w", err)
 	}
-
 	csl, err := ci.GenerateCharts(ctx, ns, newenv, cl)
 	if err != nil {
 		return fmt.Errorf("error generating metahelm charts: %w", err)
@@ -382,24 +406,20 @@ func (ci ChartInstaller) BuildAndInstallCharts(ctx context.Context, newenv *EnvI
 		return fmt.Errorf("error starting image builds: %w", err)
 	}
 	defer b.Stop()
-
 	endNamespaceSetup := ci.mc.Timing(mpfx+"namespace_setup", "triggering_repo:"+newenv.RC.Application.Repo)
-
 	if err = ci.setupNamespace(ctx, newenv.Env.Name, newenv.Env.Repo, ns); err != nil {
 		return fmt.Errorf("error setting up namespace: %w", err)
 	}
-	taddr, err := ci.installTiller(ctx, newenv.Env.Name, ns)
-	if err != nil {
-		return fmt.Errorf("error installing tiller: %w", err)
-	}
-
 	endNamespaceSetup()
-
-	return ci.installOrUpgradeCharts(ctx, taddr, ns, csl, newenv, b, false)
+	return ci.installOrUpgradeCharts(ctx, ns, csl, newenv, b, false)
 }
 
-func (ci ChartInstaller) installOrUpgradeCharts(ctx context.Context, taddr, namespace string, csl []metahelm.Chart, env *EnvInfo, b images.Batch, upgrade bool) error {
+func (ci ChartInstaller) installOrUpgradeCharts(ctx context.Context, namespace string, csl []metahelm.Chart, env *EnvInfo, b images.Batch, upgrade bool) error {
 	eventlogger.GetLogger(ctx).SetK8sNamespace(namespace)
+	mhm, err := ci.mhmf(ctx, ci.kc, ci.hccfg, namespace)
+	if err != nil || mhm == nil {
+		return fmt.Errorf("error getting helm client configuration: %w", err)
+	}
 	actStr, actingStr := "install", "install"
 	if upgrade {
 		actStr, actingStr = "upgrade", "upgrad"
@@ -429,26 +449,10 @@ func (ci ChartInstaller) installOrUpgradeCharts(ctx context.Context, taddr, name
 		ci.dl.AddEvent(ctx, env.Env.Name, "image build still pending; waiting to "+actStr+" chart for "+c.Title)
 		return metahelm.Wait
 	}
-	// update tiller addr
-	taddr, err := ci.updateTillerAddr(ctx, namespace, env.Env.Name)
-	if err != nil {
-		return fmt.Errorf("error updating tiller addr: %w", err)
-	}
-	hc, err := ci.hcf(namespace, taddr, ci.rcfg, ci.kc)
-	if err != nil {
-		return fmt.Errorf("error getting helm client: %w", err)
-	}
-	mhm := &metahelm.Manager{
-		HC:  hc,
-		K8c: ci.kc,
-		LogF: metahelm.LogFunc(func(msg string, args ...interface{}) {
-			eventlogger.GetLogger(ctx).Printf("metahelm: "+msg, args...)
-		}),
-	}
 	if upgrade {
-		err = ci.upgrade(ctx, mhm, imageReady, taddr, namespace, csl, env)
+		err = ci.upgrade(ctx, mhm, imageReady, namespace, csl, env)
 	} else {
-		err = ci.install(ctx, mhm, imageReady, taddr, namespace, csl, env)
+		err = ci.install(ctx, mhm, imageReady, namespace, csl, env)
 	}
 	if err != nil && builderr != nil {
 		return builderr
@@ -466,11 +470,11 @@ func completedCB(ctx context.Context, c metahelm.Chart, err error) {
 	eventlogger.GetLogger(ctx).SetChartCompleted(c.Title, status)
 }
 
-func (ci ChartInstaller) install(ctx context.Context, mhm *metahelm.Manager, cb func(c metahelm.Chart) metahelm.InstallCallbackAction, taddr, namespace string, csl []metahelm.Chart, env *EnvInfo) error {
+func (ci ChartInstaller) install(ctx context.Context, mhm *metahelm.Manager, cb func(c metahelm.Chart) metahelm.InstallCallbackAction, namespace string, csl []metahelm.Chart, env *EnvInfo) error {
 	defer ci.mc.Timing(mpfx+"install", "triggering_repo:"+env.Env.Repo)()
 	ctx, cf := context.WithTimeout(ctx, 30*time.Minute)
 	defer cf()
-	relmap, err := mhm.Install(ctx, csl, metahelm.WithK8sNamespace(namespace), metahelm.WithTillerNamespace(namespace), metahelm.WithInstallCallback(cb), metahelm.WithCompletedCallback(func(c metahelm.Chart, err error) { completedCB(ctx, c, err) }), metahelm.WithTimeout(metahelmTimeout))
+	relmap, err := mhm.Install(ctx, csl, metahelm.WithK8sNamespace(namespace), metahelm.WithInstallCallback(cb), metahelm.WithCompletedCallback(func(c metahelm.Chart, err error) { completedCB(ctx, c, err) }), metahelm.WithTimeout(metahelmTimeout))
 	if err != nil {
 		if _, ok := err.(metahelm.ChartError); ok {
 			return err
@@ -481,17 +485,14 @@ func (ci ChartInstaller) install(ctx context.Context, mhm *metahelm.Manager, cb 
 	if err := ci.writeReleaseNames(ctx, relmap, namespace, env); err != nil {
 		return fmt.Errorf("error writing release names: %w", err)
 	}
-	if err := ci.dl.UpdateK8sEnvTillerAddr(ctx, env.Env.Name, taddr); err != nil {
-		return fmt.Errorf("error updating k8s environment with tiller address: %w", err)
-	}
 	return nil
 }
 
-func (ci ChartInstaller) upgrade(ctx context.Context, mhm *metahelm.Manager, cb func(c metahelm.Chart) metahelm.InstallCallbackAction, taddr, namespace string, csl []metahelm.Chart, env *EnvInfo) error {
+func (ci ChartInstaller) upgrade(ctx context.Context, mhm *metahelm.Manager, cb func(c metahelm.Chart) metahelm.InstallCallbackAction, namespace string, csl []metahelm.Chart, env *EnvInfo) error {
 	defer ci.mc.Timing(mpfx+"upgrade", "triggering_repo:"+env.Env.Repo)()
 	ctx, cf := context.WithTimeout(ctx, 30*time.Minute)
 	defer cf()
-	err := mhm.Upgrade(ctx, env.Releases, csl, metahelm.WithK8sNamespace(namespace), metahelm.WithTillerNamespace(namespace), metahelm.WithInstallCallback(cb), metahelm.WithCompletedCallback(func(c metahelm.Chart, err error) { completedCB(ctx, c, err) }), metahelm.WithTimeout(metahelmTimeout))
+	err := mhm.Upgrade(ctx, env.Releases, csl, metahelm.WithK8sNamespace(namespace), metahelm.WithInstallCallback(cb), metahelm.WithCompletedCallback(func(c metahelm.Chart, err error) { completedCB(ctx, c, err) }), metahelm.WithTimeout(metahelmTimeout))
 	if err != nil {
 		if _, ok := err.(metahelm.ChartError); ok {
 			return err
@@ -691,7 +692,7 @@ func (ci ChartInstaller) createNamespace(ctx context.Context, envname string) (s
 		ci.log(ctx, "error adding create namespace event: %v: %v", envname, err.Error())
 	}
 	ns := corev1.Namespace{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
 				objLabelKey: objLabelValue,
 			},
@@ -699,7 +700,7 @@ func (ci ChartInstaller) createNamespace(ctx context.Context, envname string) (s
 	}
 	ns.Name = nsn
 	ci.log(ctx, "creating namespace: %v", nsn)
-	if _, err := ci.kc.CoreV1().Namespaces().Create(&ns); err != nil {
+	if _, err := ci.kc.CoreV1().Namespaces().Create(ctx, &ns, metav1.CreateOptions{}); err != nil {
 		return "", fmt.Errorf("error creating namespace: %w", err)
 	}
 	return nsn, nil
@@ -748,16 +749,16 @@ func (ci ChartInstaller) isRepoPrivileged(repo string) bool {
 func (ci ChartInstaller) setupNamespace(ctx context.Context, envname, repo, ns string) error {
 	ci.log(ctx, "setting up namespace: %v", ns)
 
-	// create service account for Tiller
-	ci.log(ctx, "creating service account for tiller: %v", serviceAccount)
-	if _, err := ci.kc.CoreV1().ServiceAccounts(ns).Create(&corev1.ServiceAccount{ObjectMeta: meta.ObjectMeta{Name: serviceAccount}}); err != nil {
+	// create service account
+	ci.log(ctx, "creating service account: %v", serviceAccount)
+	if _, err := ci.kc.CoreV1().ServiceAccounts(ns).Create(ctx, &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: serviceAccount}}, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("error creating service acount: %w", err)
 	}
 	roleName := "nitro"
 	// create a role for the service account
 	ci.log(ctx, "creating role for service account: %v", roleName)
-	if _, err := ci.kc.RbacV1().Roles(ns).Create(&rbacv1.Role{
-		ObjectMeta: meta.ObjectMeta{
+	if _, err := ci.kc.RbacV1().Roles(ns).Create(ctx, &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      roleName,
 			Namespace: ns,
 		},
@@ -768,13 +769,13 @@ func (ci ChartInstaller) setupNamespace(ctx context.Context, envname, repo, ns s
 				Resources: []string{"*"},
 			},
 		},
-	}); err != nil {
+	}, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("error creating service account role: %w", err)
 	}
 	// bind the service account to the role
 	ci.log(ctx, "binding service account to role")
-	if _, err := ci.kc.RbacV1().RoleBindings(ns).Create(&rbacv1.RoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+	if _, err := ci.kc.RbacV1().RoleBindings(ns).Create(ctx, &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "nitro",
 		},
 		Subjects: []rbacv1.Subject{
@@ -788,14 +789,14 @@ func (ci ChartInstaller) setupNamespace(ctx context.Context, envname, repo, ns s
 			Kind:     "Role",
 			Name:     roleName,
 		},
-	}); err != nil {
+	}, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("error creating service account cluster role binding: %w", err)
 	}
 	// if the repo is privileged, bind the service account to the cluster-admin ClusterRole
 	if ci.isRepoPrivileged(repo) {
 		ci.log(ctx, "creating privileged ClusterRoleBinding: %v", clusterRoleBindingName(envname))
-		if _, err := ci.kc.RbacV1().ClusterRoleBindings().Create(&rbacv1.ClusterRoleBinding{
-			ObjectMeta: meta.ObjectMeta{
+		if _, err := ci.kc.RbacV1().ClusterRoleBindings().Create(ctx, &rbacv1.ClusterRoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
 				Name: clusterRoleBindingName(envname),
 				Labels: map[string]string{
 					objLabelKey: objLabelValue,
@@ -813,15 +814,15 @@ func (ci ChartInstaller) setupNamespace(ctx context.Context, envname, repo, ns s
 				Kind:     "ClusterRole",
 				Name:     "cluster-admin",
 			},
-		}); err != nil {
+		}, metav1.CreateOptions{}); err != nil {
 			return fmt.Errorf("error creating cluster role binding (privileged repo): %w", err)
 		}
 	}
 	// create optional user group role bindings
 	for group, crole := range ci.k8sgroupbindings {
 		ci.log(ctx, "creating user group role binding: %v to %v", group, crole)
-		if _, err := ci.kc.RbacV1().RoleBindings(ns).Create(&rbacv1.RoleBinding{
-			ObjectMeta: meta.ObjectMeta{
+		if _, err := ci.kc.RbacV1().RoleBindings(ns).Create(ctx, &rbacv1.RoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
 				Name:      "nitro-" + group + "-to-" + crole,
 				Namespace: ns,
 			},
@@ -836,21 +837,21 @@ func (ci ChartInstaller) setupNamespace(ctx context.Context, envname, repo, ns s
 				Kind:     "ClusterRole",
 				Name:     crole,
 			},
-		}); err != nil {
+		}, metav1.CreateOptions{}); err != nil {
 			return fmt.Errorf("error creating group role binding: %w", err)
 		}
 	}
 	// create optional secrets
 	for name, value := range ci.k8ssecretinjs {
 		ci.log(ctx, "injecting secret: %v of type %v (value is from Vault)", name, value.Type)
-		if _, err := ci.kc.CoreV1().Secrets(ns).Create(&corev1.Secret{
-			ObjectMeta: meta.ObjectMeta{
+		if _, err := ci.kc.CoreV1().Secrets(ns).Create(ctx, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: ns,
 			},
 			Data: value.Data,
 			Type: corev1.SecretType(value.Type),
-		}); err != nil {
+		}, metav1.CreateOptions{}); err != nil {
 			return fmt.Errorf("error creating secret: %v: %w", name, err)
 		}
 	}
@@ -861,146 +862,13 @@ var (
 	serviceAccount = "nitro"
 )
 
-// installTiller installs Tiller in the specified namespace, waits for it to become available and returns the PodIP addr for the Tiller pod
-func (ci ChartInstaller) installTiller(ctx context.Context, envname, ns string) (string, error) {
-	if err := ci.dl.AddEvent(ctx, envname, "installing tiller into namespace"); err != nil {
-		ci.log(ctx, "error adding installing tiller event: %v: %v", envname, err.Error())
-	}
-	instops := installer.Options{
-		Namespace:                    ns,
-		ImageSpec:                    ci.tcfg.Image,
-		ServiceAccount:               serviceAccount,
-		AutoMountServiceAccountToken: true,
-	}
-	if err := installer.Install(ci.kc, &instops); err != nil {
-		return "", fmt.Errorf("error installing Tiller: %w", err)
-	}
-	select {
-	case <-ctx.Done():
-		return "", errors.New("context was cancelled")
-	default:
-		break
-	}
-	time.Sleep(ci.tcfg.ServerConnectRetryDelay) // give Tiller time to come up
-
-	var pods *corev1.PodList
-	var addr string
-	var doRetry bool
-
-	// Wait until Tiller server becomes available
-	for i := 0; i < int(ci.tcfg.ServerConnectRetries); i++ {
-		deployment, err := ci.kc.AppsV1().Deployments(ns).Get(ci.tcfg.DeploymentName, meta.GetOptions{})
-		if err != nil {
-			// Creating deployments isn't a
-			// consistent operation, so it might
-			// take a few seconds before the
-			// deployment is found.
-			if strings.Contains(err.Error(), "not found") {
-				ci.log(ctx, "Tiller deployment in namespace %s not found; retrying", ns)
-				goto retry
-			}
-			return "", fmt.Errorf("error getting Tiller deployment: %w", err)
-		}
-		if deployment.Status.AvailableReplicas == deployment.Status.Replicas {
-			pods, err = ci.getTillerPods(ns)
-			if err != nil {
-				ci.log(ctx, "error getting pods for tiller deployment: %v; retrying", err)
-				goto retry
-			}
-			if len(pods.Items) != 1 {
-				ci.log(ctx, "unexpected pod count: %v (wanted 1); retrying", len(pods.Items))
-				goto retry
-			}
-			addr = fmt.Sprintf("%v:%v", pods.Items[0].Status.PodIP, ci.tcfg.Port)
-			// use the Helm client to ping tiller to verify it's up and ready
-			hc, err := ci.hcf(ns, addr, ci.rcfg, ci.kc)
-			if err != nil {
-				return "", fmt.Errorf("error getting helm client to check tiller: %w", err)
-			}
-			if err := hc.PingTiller(); err != nil {
-				ci.log(ctx, "error pinging tiller: %v; retrying", err)
-				goto retry
-			}
-			return addr, nil
-		}
-		doRetry, err = ci.checkTillerPods(ns)
-		if !doRetry {
-			return "", fmt.Errorf("aborting tiller install: %w", err)
-		}
-		ci.log(ctx, "not all Tiller replicas are available (err: %v); retrying", err)
-	retry:
-		select {
-		case <-ctx.Done():
-			return "", errors.New("context was cancelled")
-		default:
-			break
-		}
-		time.Sleep(ci.tcfg.ServerConnectRetryDelay)
-	}
-	return "", errors.New("timed out waiting for Tiller to become available")
-}
-
-// updateTillerAddr fetches and updates tiller addr for kenv in the database and returns the current tiller pod IP, or error
-func (ci ChartInstaller) updateTillerAddr(ctx context.Context, ns, envname string) (string, error) {
-	pods, err := ci.getTillerPods(ns)
-	if err != nil {
-		return "", fmt.Errorf("error getting tiller pods: %w", err)
-	}
-	if i := len(pods.Items); i != 1 {
-		return "", fmt.Errorf("unexpected number of tiller pods (wanted 1): %v", i)
-	}
-	addr := fmt.Sprintf("%v:%v", pods.Items[0].Status.PodIP, ci.tcfg.Port)
-	if err := ci.dl.UpdateK8sEnvTillerAddr(ctx, envname, addr); err != nil {
-		return "", fmt.Errorf("error updating tiller addr in db: %w", err)
-	}
-	return addr, nil
-}
-
-func (ci ChartInstaller) checkTillerPods(ns string) (bool, error) {
-	pods, err := ci.getTillerPods(ns)
-	if err != nil {
-		return true, fmt.Errorf("error getting pods for tiller deployment; retrying: %w", err)
-	}
-	if len(pods.Items) != 1 {
-		return true, fmt.Errorf("unexpected pod count: %v (wanted 1); retrying", len(pods.Items))
-	}
-	pod := pods.Items[0]
-	if i := len(pod.Status.ContainerStatuses); i != 1 {
-		return true, fmt.Errorf("unexpected container status count: %v (expected 1); retrying", i)
-	}
-	cs := pod.Status.ContainerStatuses[0]
-	if cs.State.Running != nil {
-		return true, nil
-	}
-	if cs.State.Waiting != nil {
-		if strings.Contains(cs.State.Waiting.Reason, "BackOff") {
-			return false, fmt.Errorf("tiller container is in state %v; aborting", cs.State.Waiting.Reason)
-		}
-	}
-	return true, fmt.Errorf("tiller container is not running: %v; retrying", cs.State.String())
-}
-
-func (ci ChartInstaller) getTillerPods(ns string) (*corev1.PodList, error) {
-	requirement, err := labels.NewRequirement("app", selection.Equals, []string{"helm"})
-	if err != nil {
-		return nil, fmt.Errorf("error getting requirement: %w", err)
-	}
-	pods, err := ci.kc.CoreV1().Pods(ns).List(meta.ListOptions{
-		LabelSelector: labels.Everything().Add(*requirement).String(),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("error getting pod list: %w", err)
-	}
-	return pods, nil
-}
-
 // cleanUpNamespace deletes an environment's namespace and ClusterRoleBinding, if they exist
 func (ci ChartInstaller) cleanUpNamespace(ctx context.Context, ns, envname string, privileged bool) error {
 	var zero int64
 	// Delete in background so that we can release the lock as soon as possible
-	bg := meta.DeletePropagationBackground
+	bg := metav1.DeletePropagationBackground
 	ci.log(ctx, "deleting namespace: %v", ns)
-	if err := ci.kc.CoreV1().Namespaces().Delete(ns, &meta.DeleteOptions{GracePeriodSeconds: &zero, PropagationPolicy: &bg}); err != nil {
+	if err := ci.kc.CoreV1().Namespaces().Delete(ctx, ns, metav1.DeleteOptions{GracePeriodSeconds: &zero, PropagationPolicy: &bg}); err != nil {
 		// If the namespace is not found, we do not need to return the error as there is nothing to delete
 		if !k8serrors.IsNotFound(err) {
 			return fmt.Errorf("error deleting namespace: %w", err)
@@ -1008,7 +876,7 @@ func (ci ChartInstaller) cleanUpNamespace(ctx context.Context, ns, envname strin
 	}
 	if privileged {
 		ci.log(ctx, "deleting privileged ClusterRoleBinding: %v", clusterRoleBindingName(envname))
-		if err := ci.kc.RbacV1().ClusterRoleBindings().Delete(clusterRoleBindingName(envname), &meta.DeleteOptions{}); err != nil {
+		if err := ci.kc.RbacV1().ClusterRoleBindings().Delete(ctx, clusterRoleBindingName(envname), metav1.DeleteOptions{}); err != nil {
 			ci.log(ctx, "error cleaning up cluster role binding (privileged repo): %v", err)
 		}
 	}
@@ -1043,12 +911,12 @@ func (ci ChartInstaller) removeOrphanedNamespaces(ctx context.Context, maxAge ti
 	if maxAge == 0 {
 		return errors.New("maxAge must be greater than zero")
 	}
-	nsl, err := ci.kc.CoreV1().Namespaces().List(meta.ListOptions{LabelSelector: objLabelKey + "=" + objLabelValue})
+	nsl, err := ci.kc.CoreV1().Namespaces().List(ctx, metav1.ListOptions{LabelSelector: objLabelKey + "=" + objLabelValue})
 	if err != nil {
 		return fmt.Errorf("error listing namespaces: %w", err)
 	}
 	ci.log(ctx, "cleanup: found %v nitro namespaces", len(nsl.Items))
-	expires := meta.NewTime(time.Now().UTC().Add(-maxAge))
+	expires := metav1.NewTime(time.Now().UTC().Add(-maxAge))
 	for _, ns := range nsl.Items {
 		if ns.ObjectMeta.CreationTimestamp.Before(&expires) {
 			envs, err := ci.dl.GetK8sEnvsByNamespace(ctx, ns.Name)
@@ -1057,9 +925,9 @@ func (ci ChartInstaller) removeOrphanedNamespaces(ctx context.Context, maxAge ti
 			}
 			if len(envs) == 0 {
 				ci.log(ctx, "deleting orphaned namespace: %v", ns.Name)
-				bg := meta.DeletePropagationBackground
+				bg := metav1.DeletePropagationBackground
 				var zero int64
-				if err := ci.kc.CoreV1().Namespaces().Delete(ns.Name, &meta.DeleteOptions{GracePeriodSeconds: &zero, PropagationPolicy: &bg}); err != nil {
+				if err := ci.kc.CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{GracePeriodSeconds: &zero, PropagationPolicy: &bg}); err != nil {
 					return fmt.Errorf("error deleting namespace: %w", err)
 				}
 			}
@@ -1073,12 +941,12 @@ func (ci ChartInstaller) removeOrphanedCRBs(ctx context.Context, maxAge time.Dur
 	if maxAge == 0 {
 		return errors.New("maxAge must be greater than zero")
 	}
-	crbl, err := ci.kc.RbacV1().ClusterRoleBindings().List(meta.ListOptions{LabelSelector: objLabelKey + "=" + objLabelValue})
+	crbl, err := ci.kc.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{LabelSelector: objLabelKey + "=" + objLabelValue})
 	if err != nil {
 		return fmt.Errorf("error listing ClusterRoleBindings: %w", err)
 	}
 	ci.log(ctx, "cleanup: found %v nitro ClusterRoleBindings", len(crbl.Items))
-	expires := meta.NewTime(time.Now().UTC().Add(-maxAge))
+	expires := metav1.NewTime(time.Now().UTC().Add(-maxAge))
 	for _, crb := range crbl.Items {
 		if crb.ObjectMeta.CreationTimestamp.Before(&expires) {
 			envname := envNameFromClusterRoleBindingName(crb.ObjectMeta.Name)
@@ -1088,9 +956,9 @@ func (ci ChartInstaller) removeOrphanedCRBs(ctx context.Context, maxAge time.Dur
 			}
 			if env == nil || env.Status == models.Failure || env.Status == models.Destroyed {
 				ci.log(ctx, "deleting orphaned ClusterRoleBinding: %v", crb.ObjectMeta.Name)
-				bg := meta.DeletePropagationBackground
+				bg := metav1.DeletePropagationBackground
 				var zero int64
-				if err := ci.kc.RbacV1().ClusterRoleBindings().Delete(crb.ObjectMeta.Name, &meta.DeleteOptions{GracePeriodSeconds: &zero, PropagationPolicy: &bg}); err != nil {
+				if err := ci.kc.RbacV1().ClusterRoleBindings().Delete(ctx, crb.ObjectMeta.Name, metav1.DeleteOptions{GracePeriodSeconds: &zero, PropagationPolicy: &bg}); err != nil {
 					return fmt.Errorf("error deleting ClusterRoleBinding: %w", err)
 				}
 			}
@@ -1108,7 +976,7 @@ type K8sPod struct {
 
 // GetK8sEnvPodList returns a kubernetes environment pod list for the namespace provided
 func (ci ChartInstaller) GetPodList(ctx context.Context, ns string) (out []K8sPod, err error) {
-	pl, err := ci.kc.CoreV1().Pods(ns).List(meta.ListOptions{})
+	pl, err := ci.kc.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return []K8sPod{}, fmt.Errorf("error unable to retrieve pods for namespace %v: %w", ns, err)
 	}
@@ -1125,11 +993,17 @@ func (ci ChartInstaller) GetPodList(ctx context.Context, ns string) (out []K8sPo
 				nReady += 1
 			}
 		}
+		rc := int32(0)
+		if p.Status.Size() != 0 &&
+			len(p.Status.ContainerStatuses) > 0 &&
+			p.Status.ContainerStatuses[0].Size() != 0 {
+			rc = p.Status.ContainerStatuses[0].RestartCount
+		}
 		out = append(out, K8sPod{
 			Name:     p.Name,
 			Ready:    fmt.Sprintf("%v/%v", nReady, nContainers),
 			Status:   string(p.Status.Phase),
-			Restarts: p.Status.ContainerStatuses[0].RestartCount,
+			Restarts: rc,
 			Age:      age,
 		})
 	}
@@ -1143,7 +1017,7 @@ type K8sPodContainers struct {
 
 // GetK8sEnvPodContainers returns all container names for the specified pod
 func (ci ChartInstaller) GetPodContainers(ctx context.Context, ns, podname string) (out K8sPodContainers, err error) {
-	pod, err := ci.kc.CoreV1().Pods(ns).Get(podname, meta.GetOptions{})
+	pod, err := ci.kc.CoreV1().Pods(ns).Get(ctx, podname, metav1.GetOptions{})
 	if err != nil {
 		return K8sPodContainers{}, fmt.Errorf("error unable to retrieve pods for namespace %v: %w", ns, err)
 	}
@@ -1177,7 +1051,7 @@ func (ci ChartInstaller) GetPodLogs(ctx context.Context, ns, podname, container 
 		return nil, errors.Errorf("pod logs request is nil")
 	}
 	req.BackOff(nil)
-	plRC, err := req.Stream()
+	plRC, err := req.Stream(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting request stream: %w", err)
 	}

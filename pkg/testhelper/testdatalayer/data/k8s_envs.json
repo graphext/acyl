@@ -1,7 +1,6 @@
 [
   {
     "env_name": "foo-bar",
-    "namespace": "foo",
-    "tiller_addr": "10.10.10.10:1234"
+    "namespace": "foo"
   }
 ]

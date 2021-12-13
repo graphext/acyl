@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"k8s.io/helm/pkg/strvals"
+	"helm.sh/helm/v3/pkg/strvals"
 )
 
 // ValueOverridesMap represents a set of chart YAML overrides, a map of YAML path to value,

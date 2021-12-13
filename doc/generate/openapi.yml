@@ -1,0 +1,1258 @@
+openapi: "3.0.3"
+
+servers:
+  - url: http://localhost
+    description: "Defined by server config / helm chart"
+
+info:
+  title: Acyl API
+  description: "The Acyl API provides authenticated users options manage dynamic environments."
+  contact:
+    name: Benjamen Keroack
+    url: "https://github.com/dollarshaveclub/acyl"
+    email: benjamen@dollarshaveclub.com
+  license:
+    name: MIT
+    url: "https://opensource.org/licenses/MIT"
+  version: v0.9.0
+
+tags:
+  - name: v2
+    description: "API v2 endpoints; adds Nitro features and User API Key management"
+
+security:
+  - api_key: []
+
+components:
+  securitySchemes:
+    api_key:
+      description: "API Key or aborts with Unauthorized"
+      type: apiKey
+      name: API-Key
+      in: header
+  schemas:
+    QAEnvironmentEvent:
+      type: object
+      description: "This represents the default environment"
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        message:
+          type: string
+    RefMap:
+      type: object
+      description: "This represents a map of repo name to git reference (branch)"
+      properties:
+        string:
+          type: string
+    CommitShaMap:
+      type: object
+      description: "This represents a map of repo name to full commit shas"
+      properties:
+        string:
+          type: string
+    QAEnvironment_v2:
+      type: object
+      description: "This represents the versioned (v2) environment that includes prior version changes, and adds source_ref field"
+      properties:
+        name:
+          type: string
+        created:
+          type: string
+          format: date-time
+        events:
+          $ref: '#/components/schemas/QAEnvironmentEvent'
+        hostname:
+          type: string
+        qa_type:
+          deprecated: true
+          type: string
+          description: "**DEPRECATED** not supported with Nitro v2 or newer"
+        user:
+          type: string
+          description: "GitHub username of the user who opened the triggering PR."
+        repo:
+          type: string
+          description: "GitHub repository, including organization if applicable (e.g. dollarshaveclub/acyl)"
+        pull_request:
+          type: integer
+          format: uint
+          description: "GitHub Pull Request value"
+        source_sha:
+          type: string
+          description: "GitHub SHA for the dev branch"
+        base_sha:
+          type: string
+          description: "GitHub HEAD commit SHA for the branch the PR will merge into (eg, master)."
+        source_branch:
+          type: string
+          description: "GitHub name of the dev branch"
+        base_branch:
+          type: string
+          description: "GitHub branch name the PR will merge into (eg, master)."
+        raw_status:
+          type: string
+        status:
+          type: integer
+          description: "Integer based on EnvironmentStatus; UnknownStatus: 0, Spawned: 1, Success: 2, Failure: 3, Destroyed: 4, Updating: 5, Cancelled: 6"
+        ref_map:
+          $ref: '#/components/schemas/RefMap'
+        amino_service_to_port:
+          deprecated: true
+          type: object
+          description: "**DEPRECATED** not supported with Nitro v2 or newer"
+          properties:
+            string:
+              type: integer
+              format: int64
+        amino_kubernetes_namespace:
+          deprecated: true
+          type: string
+          description: "**DEPRECATED** not supported with Nitro v2 or newer"
+        amino_environment_id:
+          deprecated: true
+          type: integer
+          description: "**DEPRECATED** not supported with Nitro v2 or newer"
+        commit_sha_map:
+          $ref: '#/components/schemas/CommitShaMap'
+        source_ref:
+          type: string
+    EventLog:
+      description: "This represents the event log"
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Acyl event log id (uuid)"
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+        env_name:
+          type: string
+          description: "Random generated Acyl environment name"
+        repo:
+          type: string
+          description: "GitHub repository, including organization if applicable (e.g. dollarshaveclub/acyl)"
+        pull_request:
+          type: integer
+          format: uint
+          description: "GitHub Pull Request value"
+        webhook_payload:
+          description: "Value of the `payload` field returned in the webhook response"
+          type: string
+          format: byte
+        log:
+          description: "A time-ordered array of debug log messages associated with this specific event for the environment"
+          type: string
+          format: array
+  parameters:
+    readOnlyAPIKey:
+      name: "API Key"
+      in: header
+      description: "Read Only API Key required for this endpoint"
+      required: true
+      schema:
+        type: string
+        format: uuid
+    writeAPIKey:
+      name: "API Key"
+      in: header
+      description: "Write API Key required for this endpoint"
+      required: true
+      schema:
+        type: string
+        format: uuid
+    fullDetailsParam:
+      name: full_details
+      in: query
+      description: "Returns full list of details as defined by QAEnvironment (v0); default false"
+      required: false
+      schema:
+        type: string
+        format: boolean
+    prParam:
+      name: pr
+      in: query
+      description: "GitHub Pull Request value, required if repo parameter included"
+      required: false
+      schema:
+        type: string
+        format: integer
+    repoParam:
+      name: repo
+      in: query
+      description: "GitHub repository, including organization if applicable (e.g. dollarshaveclub/acyl)"
+      required: false
+      schema:
+        type: string
+    statusParam:
+      name: status
+      in: query
+      description: "Integer based on EnvironmentStatus; UnknownStatus: 0, Spawned: 1, Success: 2, Failure: 3, Destroyed: 4, Updating: 5, Cancelled: 6"
+      required: false
+      schema:
+        type: string
+        format: integer
+    sourceBranchParam:
+      name: source_branch
+      in: query
+      description: "GitHub name of the dev branch"
+      required: false
+      schema:
+        type: string
+    sourceShaParam:
+      name: source_sha
+      in: query
+      description: "GitHub SHA for the dev branch"
+      required: false
+      schema:
+        type: string
+    userParam:
+      name: user
+      in: query
+      description: "GitHub username of the user who opened the triggering PR."
+      required: false
+      schema:
+        type: string
+    envNameParam:
+      name: name
+      in: path
+      description: "Acyl environment name (e.g. foo-bar-baz)"
+      required: true
+      schema:
+        type: string
+    eventLogIdParam:
+      name: id
+      in: path
+      description: "Acyl event log id (uuid)"
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    400:
+      description: "Bad Request"
+    404:
+      description: "Not Found"
+    500:
+      description: "Internal Server Error"
+  examples:
+    envs:
+      summary: "Environments Search Response Example"
+      value:
+        - amino_environment_id: 0
+          amino_kubernetes_namespace: ''
+          amino_service_to_port: {}
+          base_branch: master
+          base_sha: 1c0c673d131ffb3cabc456154c2508df9b31d135
+          commit_sha_map:
+            dollarshaveclub/acyl: c714601f4935307f11b0cc193edeab52869d05f5
+            dollarshaveclub/furan: 350b42a8d0e0a7f0e936980da63e5571dd245b37
+          created: '2021-03-19T00:17:54.907218Z'
+          events:
+            - created: '2021-03-19T00:17:54.907220824Z'
+              message: spawned
+            - created: '2021-03-19T00:17:54.960277056Z'
+              message: 'webhook event id: bca11ef9-4fe3-4b8e-9323-060651427cba'
+            - created: '2021-03-19T00:18:08.781657078Z'
+              message: 'creating namespace: nitro-37261-meteoric-basidiomycetes'
+            - created: '2021-03-19T00:18:08.838962695Z'
+              message: 'building container: dollarshaveclub/acyl:17ce3f3fe93fabce7e982ee1a1f65def2338041d'
+            - created: '2021-03-19T00:18:08.850896241Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-03-19T00:18:08.948972672Z'
+              message: installing tiller into namespace
+            - created: '2021-03-19T00:18:12.615566256Z'
+              message: 'build finished: dollarshaveclub/furan: fb001477-38ea-4547-9b53-9e5a5abf6e34'
+            - created: '2021-03-19T00:19:24.231564082Z'
+              message: image build complete; installing chart for furan
+            - created: '2021-03-19T00:20:10.521866351Z'
+              message: image build still pending; waiting to install chart for dollarshaveclub-acyl
+            - created: '2021-03-19T00:20:20.526909913Z'
+              message: image build still pending; waiting to install chart for dollarshaveclub-acyl
+            - created: '2021-03-19T00:20:30.532948058Z'
+              message: image build still pending; waiting to install chart for dollarshaveclub-acyl
+            - created: '2021-03-19T00:20:40.538735133Z'
+              message: image build still pending; waiting to install chart for dollarshaveclub-acyl
+            - created: '2021-03-19T00:20:43.895081198Z'
+              message: 'build finished: dollarshaveclub/acyl: 2130854e-9edd-4cce-be06-51cd88e67acb'
+            - created: '2021-03-19T00:20:50.544844778Z'
+              message: image build complete; installing chart for dollarshaveclub-acyl
+            - created: '2021-03-19T00:21:06.608678213Z'
+              message: 'all charts installed; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-03-19T00:21:06.657917489Z'
+              message: Marked as Success
+            - created: '2021-03-19T23:09:46.058309393Z'
+              message: 'webhook event id: d91def44-f87e-41ab-89ff-cf861b004105'
+            - created: '2021-03-19T23:09:58.411573851Z'
+              message: Marked as Updating
+            - created: '2021-03-19T23:09:58.522557983Z'
+              message: 'building container: dollarshaveclub/acyl:faf45633d12f6c17682e18ee919dba70e97d1c43'
+            - created: '2021-03-19T23:09:58.539424887Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-03-19T23:10:01.975574308Z'
+              message: 'build finished: dollarshaveclub/furan: 5dcc1e44-6760-439a-af52-a61df9378da4'
+            - created: '2021-03-19T23:10:04.679580063Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-03-19T23:10:08.061932341Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-19T23:10:18.068288909Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-19T23:10:28.075679895Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-19T23:10:38.083158224Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-19T23:11:41.192303989Z'
+              message: 'build finished: dollarshaveclub/acyl: 84a261fc-a171-430a-8d6a-eb0c8a0f8e56'
+            - created: '2021-03-19T23:11:48.135555852Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-03-19T23:12:08.780840626Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-03-19T23:12:08.826954036Z'
+              message: Marked as Success
+            - created: '2021-03-25T16:35:38.191935854Z'
+              message: 'webhook event id: 72b3859d-1355-4a8c-8d26-c657f0818427'
+            - created: '2021-03-25T16:35:51.184208216Z'
+              message: Marked as Updating
+            - created: '2021-03-25T16:35:51.264049621Z'
+              message: 'building container: dollarshaveclub/acyl:8d914897e0a0e1ebccf9397a9a3c89a2d4cf6dd8'
+            - created: '2021-03-25T16:35:51.278138747Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-03-25T16:35:54.603356944Z'
+              message: 'build finished: dollarshaveclub/furan: b7c3052c-6c18-4863-890d-2c04fe014534'
+            - created: '2021-03-25T16:35:58.230294252Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-03-25T16:36:01.357395792Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-25T16:36:11.362899855Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-25T16:36:21.368602226Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-25T16:36:31.375853677Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-25T16:37:27.452644693Z'
+              message: 'build finished: dollarshaveclub/acyl: 4f54b5c5-79da-4e38-b68b-39930e0aa6df'
+            - created: '2021-03-25T16:37:31.411252721Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-03-25T16:37:46.080955167Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-03-25T16:37:46.106342093Z'
+              message: Marked as Success
+            - created: '2021-03-25T23:43:10.628700815Z'
+              message: 'webhook event id: a2f22a4b-2707-4db4-b326-2bb68ce5934c'
+            - created: '2021-03-25T23:43:23.316369125Z'
+              message: Marked as Updating
+            - created: '2021-03-25T23:43:23.345375531Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-03-25T23:43:23.356113104Z'
+              message: 'building container: dollarshaveclub/acyl:956052718cb2d88a6404836ad88b3bab5e447bc0'
+            - created: '2021-03-25T23:43:26.759027502Z'
+              message: 'build finished: dollarshaveclub/furan: 1ff5863a-f0c3-413d-bc9b-16a97abaf2e2'
+            - created: '2021-03-25T23:43:29.617070495Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-03-25T23:43:32.972002536Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-25T23:43:42.976609368Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-25T23:43:52.982072389Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-25T23:44:02.98755087Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-25T23:45:34.89059141Z'
+              message: 'build finished: dollarshaveclub/acyl: fc5bf134-b4cd-4d58-a02c-d4fda2593cdd'
+            - created: '2021-03-25T23:45:43.047141032Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-03-25T23:45:58.989126364Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-03-25T23:45:59.015309809Z'
+              message: Marked as Success
+            - created: '2021-03-26T23:49:53.217150047Z'
+              message: 'webhook event id: d75398a3-58d9-493b-b1c5-7041ebed41e1'
+            - created: '2021-03-26T23:50:07.17631622Z'
+              message: Marked as Updating
+            - created: '2021-03-26T23:50:07.222924532Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-03-26T23:50:07.29927664Z'
+              message: 'building container: dollarshaveclub/acyl:6f434fbbd27cc35476657b2c2386a09f6ed29a39'
+            - created: '2021-03-26T23:50:10.979889005Z'
+              message: 'build finished: dollarshaveclub/furan: 0a1d226f-29e0-4c8a-965c-226b86962f11'
+            - created: '2021-03-26T23:50:13.469838223Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-03-26T23:50:16.799034884Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-26T23:50:26.804078955Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-26T23:50:36.810486703Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-26T23:50:46.816351849Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-26T23:53:33.689799779Z'
+              message: 'build finished: dollarshaveclub/acyl: 5d0dffde-8a4a-4e39-9bb7-0c2582af3da6'
+            - created: '2021-03-26T23:53:36.922285826Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-03-26T23:53:52.382968302Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-03-26T23:53:52.416414058Z'
+              message: Marked as Success
+            - created: '2021-03-30T21:27:26.590269997Z'
+              message: 'webhook event id: ddd5afe4-0c05-4081-bf1a-f35dbbaf4da4'
+            - created: '2021-03-30T21:27:39.318889944Z'
+              message: Marked as Updating
+            - created: '2021-03-30T21:27:39.350012854Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-03-30T21:27:39.384664643Z'
+              message: 'building container: dollarshaveclub/acyl:2bbe679a72ce6cce22d68928cf608fc8aa7e78d1'
+            - created: '2021-03-30T21:27:43.004773696Z'
+              message: 'build finished: dollarshaveclub/furan: 8680cf36-7121-4bcb-8863-15408fc6a7b8'
+            - created: '2021-03-30T21:27:45.871472327Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-03-30T21:27:49.23116607Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-30T21:27:59.236795094Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-30T21:28:09.288736115Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-30T21:28:19.294670227Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-03-30T21:29:33.122956607Z'
+              message: 'build finished: dollarshaveclub/acyl: 94ca0d99-aaaf-4e13-978e-38beefe8777f'
+            - created: '2021-03-30T21:29:39.341215764Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-03-30T21:29:55.221855127Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-03-30T21:29:55.250452854Z'
+              message: Marked as Success
+            - created: '2021-04-01T02:16:51.763971954Z'
+              message: 'webhook event id: b2795180-e839-4714-8907-c2308fd7dd2a'
+            - created: '2021-04-01T02:17:04.287057247Z'
+              message: Marked as Updating
+            - created: '2021-04-01T02:17:04.352787118Z'
+              message: 'building container: dollarshaveclub/acyl:880d9c773bf3325f4518c262b1d2bcb73e49dd00'
+            - created: '2021-04-01T02:17:04.446870581Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-01T02:17:08.127951998Z'
+              message: 'build finished: dollarshaveclub/furan: d18bf946-58de-4710-9eb8-20b8daa38189'
+            - created: '2021-04-01T02:17:10.632916741Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-04-01T02:17:13.813315468Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-01T02:17:23.818935348Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-01T02:17:33.825648483Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-01T02:17:43.831542599Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-01T02:18:52.21904548Z'
+              message: 'build finished: dollarshaveclub/acyl: 1f98a027-3690-485a-8888-2fafbb207f02'
+            - created: '2021-04-01T02:18:53.874162804Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-04-01T02:19:07.814815783Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-04-01T02:19:07.861415021Z'
+              message: Marked as Success
+            - created: '2021-04-02T23:17:08.334021895Z'
+              message: 'webhook event id: c98aea37-c3f7-4503-83f1-cf17a3dadd67'
+            - created: '2021-04-02T23:17:20.196419854Z'
+              message: Marked as Updating
+            - created: '2021-04-02T23:17:20.244968308Z'
+              message: 'building container: dollarshaveclub/acyl:42472a882a1e1b33b618e2783ca7926b9c0e21e1'
+            - created: '2021-04-02T23:17:20.303710141Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-02T23:17:23.817400863Z'
+              message: 'build finished: dollarshaveclub/furan: 39bad989-5dd0-4fa7-a74a-841da8f84d47'
+            - created: '2021-04-02T23:17:26.479115372Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-04-02T23:17:29.85245282Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-02T23:17:39.863307087Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-02T23:17:49.870558646Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-02T23:17:59.877006048Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-02T23:19:03.917644619Z'
+              message: 'build finished: dollarshaveclub/acyl: cd7cf82d-b9fe-4ace-89a9-d98743576dcd'
+            - created: '2021-04-02T23:19:09.943221185Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-04-02T23:19:25.723975936Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-04-02T23:19:25.752083088Z'
+              message: Marked as Success
+            - created: '2021-04-06T23:29:25.994296498Z'
+              message: 'webhook event id: e7d70a2f-1799-4371-8753-859aa9556b1b'
+            - created: '2021-04-06T23:29:37.863942724Z'
+              message: Marked as Updating
+            - created: '2021-04-06T23:29:37.906609828Z'
+              message: 'building container: dollarshaveclub/acyl:8dd260a2f198326adeaa9cb54afd07279e43a0e9'
+            - created: '2021-04-06T23:29:37.975369946Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-06T23:29:41.63608803Z'
+              message: 'build finished: dollarshaveclub/furan: b9668197-e5ab-47d2-96bf-13b5ce0e7d9e'
+            - created: '2021-04-06T23:29:44.062983931Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-04-06T23:29:47.346038372Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-06T23:29:57.352919117Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-06T23:30:07.359473997Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-06T23:30:17.365593083Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-06T23:32:18.02587983Z'
+              message: 'build finished: dollarshaveclub/acyl: 4c82d91b-fcfb-4ffb-bd1e-7d6983eb6779'
+            - created: '2021-04-06T23:32:27.45767442Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-04-06T23:32:47.233815186Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-04-06T23:32:47.268749963Z'
+              message: Marked as Success
+            - created: '2021-04-07T20:26:24.916548743Z'
+              message: 'webhook event id: 0107f96d-b348-4643-bc42-758bbf1e2014'
+            - created: '2021-04-07T20:26:37.501656883Z'
+              message: Marked as Updating
+            - created: '2021-04-07T20:26:37.532321643Z'
+              message: 'building container: dollarshaveclub/acyl:2ed2553287505baeb4c2c1b9dfc95df46d03620e'
+            - created: '2021-04-07T20:26:37.600710777Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-07T20:26:41.293106953Z'
+              message: 'build finished: dollarshaveclub/furan: fe9df97e-7c9d-4a09-9ca3-c8290bb6b958'
+            - created: '2021-04-07T20:26:43.99681096Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-04-07T20:26:47.300414842Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T20:26:57.305815637Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T20:27:07.312117845Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T20:27:17.318861102Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T20:28:22.286409874Z'
+              message: 'build finished: dollarshaveclub/acyl: d35db075-b4d0-4a10-86e5-621a1eebc69f'
+            - created: '2021-04-07T20:28:27.360560421Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-04-07T20:28:47.019277647Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-04-07T20:28:47.114358344Z'
+              message: Marked as Success
+            - created: '2021-04-07T21:02:37.101939205Z'
+              message: 'webhook event id: 260f0b6c-d514-47ce-8113-5d75caf7ae7d'
+            - created: '2021-04-07T21:02:49.588294701Z'
+              message: Marked as Updating
+            - created: '2021-04-07T21:02:49.619384557Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-07T21:02:49.65287097Z'
+              message: 'building container: dollarshaveclub/acyl:739d329515d1c0a00e9456b9cf7c9eefc6aa8996'
+            - created: '2021-04-07T21:02:53.061500148Z'
+              message: 'build finished: dollarshaveclub/furan: bc5b9859-395b-4843-9894-6f1782a49017'
+            - created: '2021-04-07T21:02:55.81419503Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-04-07T21:02:59.112084642Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T21:03:09.197778995Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T21:03:19.204785162Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T21:03:29.21099579Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T21:04:23.082877813Z'
+              message: 'build finished: dollarshaveclub/acyl: ffb7e59a-8dbd-4455-9abf-727a43dba5a1'
+            - created: '2021-04-07T21:04:29.247791417Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-04-07T21:04:49.692503978Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-04-07T21:04:49.719272165Z'
+              message: Marked as Success
+            - created: '2021-04-07T21:08:00.347823533Z'
+              message: 'webhook event id: e95284ef-3977-449f-87d3-ced94fd4e34d'
+            - created: '2021-04-07T21:08:12.851727111Z'
+              message: Marked as Updating
+            - created: '2021-04-07T21:08:12.946972888Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-07T21:08:12.974675665Z'
+              message: 'building container: dollarshaveclub/acyl:d34ba4ded5a74644a276ad17d296ec1500a030d0'
+            - created: '2021-04-07T21:08:16.366340104Z'
+              message: 'build finished: dollarshaveclub/furan: 9f6996ad-9a90-438e-89d2-34ac6f1576bb'
+            - created: '2021-04-07T21:08:18.923992085Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-04-07T21:08:22.255898701Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T21:08:32.261454227Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T21:08:42.268743702Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T21:08:52.275068531Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-07T21:10:50.261044662Z'
+              message: 'build finished: dollarshaveclub/acyl: 8320654e-e81e-4787-b5f3-779e061da7bb'
+            - created: '2021-04-07T21:10:52.354691474Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-04-07T21:11:13.111575065Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-04-07T21:11:13.141230085Z'
+              message: Marked as Success
+            - created: '2021-04-08T00:39:22.12408138Z'
+              message: 'webhook event id: 478ee177-6b81-42ee-a048-a4f9d5110a73'
+            - created: '2021-04-08T00:39:34.365264065Z'
+              message: Marked as Updating
+            - created: '2021-04-08T00:39:34.399617868Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-08T00:39:34.413827125Z'
+              message: 'building container: dollarshaveclub/acyl:3e1c7c9f58ac15f63f08080dad0e0f18e6b514a3'
+            - created: '2021-04-08T00:39:37.828050525Z'
+              message: 'build finished: dollarshaveclub/furan: e94a017f-05e8-44d7-93ba-bcbe6e2c95f6'
+            - created: '2021-04-08T00:39:40.604206171Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-04-08T00:39:43.92629549Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-08T00:39:53.932521059Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-08T00:40:03.939222466Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-08T00:40:13.945508454Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-08T00:41:13.697720188Z'
+              message: 'build finished: dollarshaveclub/acyl: ade0f40a-80df-45f5-a67e-be4311754cb2'
+            - created: '2021-04-08T00:41:13.98678405Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-04-08T00:41:32.25645322Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-04-08T00:41:32.29326328Z'
+              message: Marked as Success
+            - created: '2021-04-09T23:19:19.217734872Z'
+              message: 'webhook event id: 11e51f95-17a5-4b40-8a21-be493c19d224'
+            - created: '2021-04-09T23:19:31.283795878Z'
+              message: Marked as Updating
+            - created: '2021-04-09T23:19:31.320522408Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-09T23:19:31.351563581Z'
+              message: 'building container: dollarshaveclub/acyl:265c7c315d777287ecebe2303df24c929de4cf9e'
+            - created: '2021-04-09T23:19:34.761457228Z'
+              message: 'build finished: dollarshaveclub/furan: fc1e24ad-eabf-4e45-8bbc-1638e1fb1e71'
+            - created: '2021-04-09T23:19:37.554878443Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-04-09T23:19:40.919095068Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-09T23:19:50.924399675Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-09T23:20:00.930712091Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-09T23:20:10.93802198Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-13T00:11:14.127976031Z'
+              message: 'webhook event id: ce3499ee-6453-47a1-89c7-22e3c8fcf338'
+            - created: '2021-04-13T00:11:26.140391264Z'
+              message: 'creating namespace: nitro-44678-meteoric-basidiomycetes'
+            - created: '2021-04-13T00:11:26.258146135Z'
+              message: 'building container: dollarshaveclub/acyl:1d08e02cc2be5f449df64eead023525eba09727c'
+            - created: '2021-04-13T00:11:26.276089225Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-13T00:11:26.493590245Z'
+              message: installing tiller into namespace
+            - created: '2021-04-13T00:11:29.727120661Z'
+              message: 'build finished: dollarshaveclub/furan: b2a6220a-e505-4aaf-8fc3-ed780feb92a7'
+            - created: '2021-04-13T00:12:55.189457215Z'
+              message: 'build finished: dollarshaveclub/acyl: 92b13618-9d5b-484b-baff-4d400ea3dba0'
+            - created: '2021-04-13T00:13:03.086753384Z'
+              message: image build complete; installing chart for furan
+            - created: '2021-04-13T00:13:37.787102861Z'
+              message: image build complete; installing chart for dollarshaveclub-acyl
+            - created: '2021-04-13T00:14:04.571681743Z'
+              message: 'all charts installed; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-04-13T00:14:04.593236356Z'
+              message: Marked as Success
+            - created: '2021-04-13T16:26:06.128982028Z'
+              message: 'webhook event id: 7c9cade3-c129-4dcd-ae54-e8f3d21ab8e5'
+            - created: '2021-04-13T16:26:19.316606903Z'
+              message: Marked as Updating
+            - created: '2021-04-13T16:26:19.357892679Z'
+              message: 'building container: dollarshaveclub/acyl:934b6f4339237ffe0aa512953e6dc7d7b67a23d0'
+            - created: '2021-04-13T16:26:19.3716789Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-13T16:26:23.029600951Z'
+              message: 'build finished: dollarshaveclub/furan: 52d0c5ab-ba10-4d81-a7be-8bbb74e6c67e'
+            - created: '2021-04-13T16:26:25.585950702Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-04-13T16:26:28.896916299Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-13T16:26:38.902896993Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-13T16:26:48.908992979Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-13T16:26:58.915482112Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-13T16:28:55.307959882Z'
+              message: 'build finished: dollarshaveclub/acyl: 5492056a-9fe3-4830-b0f7-966d0e7ea51a'
+            - created: '2021-04-13T16:28:58.996211981Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-04-13T16:29:19.783376651Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-04-13T16:29:19.808906782Z'
+              message: Marked as Success
+            - created: '2021-04-13T18:54:57.920976697Z'
+              message: 'webhook event id: 596a886d-fc56-48ac-be45-15b2a306d622'
+            - created: '2021-04-13T18:55:13.5055299Z'
+              message: Marked as Updating
+            - created: '2021-04-13T18:55:13.554752559Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-13T18:55:13.648000474Z'
+              message: 'building container: dollarshaveclub/acyl:e1e21c47d8386cd20384cd05d696bde8fce52c79'
+            - created: '2021-04-13T18:55:17.13570175Z'
+              message: 'build finished: dollarshaveclub/furan: 230022cb-a751-40a4-99ca-4738cfb49587'
+            - created: '2021-04-13T18:55:19.738847924Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-04-13T18:55:23.06124246Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-13T18:55:33.067485412Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-13T18:55:43.074385997Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-13T18:55:53.081528195Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-13T18:56:53.733071151Z'
+              message: 'build finished: dollarshaveclub/acyl: 73e90f90-4882-4c5a-87df-d9798ee2579c'
+            - created: '2021-04-13T18:57:03.132020413Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-04-13T18:57:23.557816511Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-04-13T18:57:23.644861846Z'
+              message: Marked as Success
+            - created: '2021-04-14T21:44:18.966343384Z'
+              message: 'webhook event id: c45cb76f-c369-4970-93f3-c1fba6672229'
+            - created: '2021-04-14T21:44:32.027890579Z'
+              message: Marked as Updating
+            - created: '2021-04-14T21:44:32.06473918Z'
+              message: 'building container: dollarshaveclub/furan:350b42a8d0e0a7f0e936980da63e5571dd245b37'
+            - created: '2021-04-14T21:44:32.075647837Z'
+              message: 'building container: dollarshaveclub/acyl:c714601f4935307f11b0cc193edeab52869d05f5'
+            - created: '2021-04-14T21:44:35.620076459Z'
+              message: 'build finished: dollarshaveclub/furan: 1e4e20c2-bd0b-42c0-b190-7480a3633d2e'
+            - created: '2021-04-14T21:44:38.465977211Z'
+              message: image build complete; upgrading chart for furan
+            - created: '2021-04-14T21:44:41.901056622Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-14T21:44:51.907336841Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-14T21:45:01.914438442Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-14T21:45:11.92144829Z'
+              message: image build still pending; waiting to upgrade chart for dollarshaveclub-acyl
+            - created: '2021-04-14T21:46:09.473713197Z'
+              message: 'build finished: dollarshaveclub/acyl: 6cb79812-ea43-485d-a5bb-5cfb2c74ef54'
+            - created: '2021-04-14T21:46:11.961523257Z'
+              message: image build complete; upgrading chart for dollarshaveclub-acyl
+            - created: '2021-04-14T21:46:24.34184471Z'
+              message: 'all charts upgraded; release names: map[dollarshaveclub-acyl:dollarshaveclub-acyl
+                              dollarshaveclub-furan-consul:dollarshaveclub-furan-consul dollarshaveclub-furan-kafka:dollarshaveclub-furan-kafka
+                              dollarshaveclub-furan-scylladb:dollarshaveclub-furan-scylladb dollarshaveclub-furan-vault:dollarshaveclub-furan-vault
+                              dollarshaveclub-furan-zookeeper:dollarshaveclub-furan-zookeeper furan:furan
+                              postgresql:postgresql]'
+            - created: '2021-04-14T21:46:24.401658125Z'
+              message: Marked as Success
+          hostname: ''
+          name: meteoric-basidiomycetes
+          pull_request: 154
+          qa_type: ''
+          ref_map:
+            dollarshaveclub/acyl: feature/user-api-tokens-ui
+            dollarshaveclub/furan: legacy-v1
+          repo: dollarshaveclub/acyl
+          source_branch: feature/user-api-tokens-ui
+          source_ref: feature/user-api-tokens-ui
+          source_sha: c714601f4935307f11b0cc193edeab52869d05f5
+          status: Success
+          user: bobsmith
+        - amino_environment_id: 0
+          amino_kubernetes_namespace: ''
+          amino_service_to_port: {}
+          base_branch: master
+          base_sha: d7cc56f432351656dd8cc3418ca4b42eb0298e06
+          commit_sha_map:
+            organization/cool-app: 0a63aa79565879e88f0eec36ed19a81a965d7479
+            organization/reliable-backend: a6593cc6e2ff530ef0ccd872b9f4b6466598cead
+            organization/awesome-app: 60fca9f2a340ecc8a03f208eb27dc45d9d410252
+          created: '2021-02-17T23:53:58.1599Z'
+          events:
+            - created: '2021-02-17T23:53:58.159903254Z'
+              message: spawned
+            - created: '2021-02-17T23:53:58.169367515Z'
+              message: 'webhook event id: 8d2acf11-2c4c-448d-9c5b-dec2dba45746'
+            - created: '2021-02-17T23:54:06.559699279Z'
+              message: 'creating namespace: nitro-58043-aweigh-debt'
+            - created: '2021-02-17T23:54:06.595162733Z'
+              message: 'building container: organization/awesome-app:5b9ba7410a640093a63ee0db31d2dd41c86111c8'
+            - created: '2021-02-17T23:54:06.607878572Z'
+              message: 'building container: organization/cool-app:0a63aa79565879e88f0eec36ed19a81a965d7479'
+            - created: '2021-02-17T23:54:06.611853939Z'
+              message: 'building container: organization/reliable-backend:a6593cc6e2ff530ef0ccd872b9f4b6466598cead'
+            - created: '2021-02-17T23:54:06.662972658Z'
+              message: installing tiller into namespace
+            - created: '2021-02-17T23:54:10.042227589Z'
+              message: 'build finished: organization/reliable-backend: e58664e9-166f-4547-8d2d-f08edf51797b'
+            - created: '2021-02-17T23:54:10.054481938Z'
+              message: 'build finished: organization/cool-app: 530fde30-64d2-4010-b3a4-a437c14ee615'
+            - created: '2021-02-17T23:54:16.749419518Z'
+              message: image build complete; installing chart for reliable-backend
+            - created: '2021-02-17T23:54:16.751058374Z'
+              message: image build complete; installing chart for cool-app
+            - created: '2021-02-17T23:54:28.865217727Z'
+              message: image build still pending; waiting to install chart for organization-awesome-app
+            - created: '2021-02-17T23:54:38.86974826Z'
+              message: image build still pending; waiting to install chart for organization-awesome-app
+            - created: '2021-02-17T23:54:48.874585434Z'
+              message: image build still pending; waiting to install chart for organization-awesome-app
+            - created: '2021-02-17T23:54:58.87972202Z'
+              message: image build still pending; waiting to install chart for organization-awesome-app
+            - created: '2021-02-17T23:59:46.683907651Z'
+              message: 'build finished: organization/awesome-app: 159d618c-6558-4d78-97f9-d7a939d1a489'
+            - created: '2021-02-17T23:59:49.030106032Z'
+              message: image build complete; installing chart for organization-awesome-app
+            - created: '2021-02-18T00:00:19.207660836Z'
+              message: 'all charts installed; release names: map[cool-app:cool-app reliable-backend:reliable-backend
+                          organization-awesome-app:organization-awesome-app]'
+            - created: '2021-02-18T00:00:19.21870806Z'
+              message: Marked as Success
+            - created: '2021-02-18T17:37:09.5128307Z'
+              message: 'webhook event id: c8229a78-ac7f-47cc-912a-b3881542a346'
+            - created: '2021-02-18T17:37:17.633859166Z'
+              message: Marked as Updating
+            - created: '2021-02-18T17:37:17.652425929Z'
+              message: 'building container: organization/awesome-app:60fca9f2a340ecc8a03f208eb27dc45d9d410252'
+            - created: '2021-02-18T17:37:17.672959266Z'
+              message: 'building container: organization/cool-app:0a63aa79565879e88f0eec36ed19a81a965d7479'
+            - created: '2021-02-18T17:37:17.675281529Z'
+              message: 'building container: organization/reliable-backend:a6593cc6e2ff530ef0ccd872b9f4b6466598cead'
+            - created: '2021-02-18T17:37:17.685583111Z'
+              message: image build still pending; waiting to upgrade chart for reliable-backend
+            - created: '2021-02-18T17:37:17.687558422Z'
+              message: image build still pending; waiting to upgrade chart for cool-app
+            - created: '2021-02-18T17:37:21.107824961Z'
+              message: 'build finished: organization/reliable-backend: 7e2d909c-09c1-43ff-87c2-0927f34a659e'
+            - created: '2021-02-18T17:37:21.46062541Z'
+              message: 'build finished: organization/cool-app: fc367cc9-ec7e-4a51-8117-afb26c562177'
+            - created: '2021-02-18T17:37:27.692194979Z'
+              message: image build complete; upgrading chart for reliable-backend
+            - created: '2021-02-18T17:37:27.69398164Z'
+              message: image build complete; upgrading chart for cool-app
+            - created: '2021-02-18T17:37:33.687933018Z'
+              message: image build still pending; waiting to upgrade chart for organization-awesome-app
+            - created: '2021-02-18T17:37:43.694248473Z'
+              message: image build still pending; waiting to upgrade chart for organization-awesome-app
+            - created: '2021-02-18T17:37:53.701794381Z'
+              message: image build still pending; waiting to upgrade chart for organization-awesome-app
+            - created: '2021-02-18T17:38:03.709223475Z'
+              message: image build still pending; waiting to upgrade chart for organization-awesome-app
+            - created: '2021-02-18T17:44:59.078428239Z'
+              message: 'build finished: organization/awesome-app: 911f05fa-b800-4312-84a5-ecac0343d3db'
+            - created: '2021-02-18T17:45:04.057041592Z'
+              message: image build complete; upgrading chart for organization-awesome-app
+            - created: '2021-02-18T17:45:34.362562933Z'
+              message: 'all charts upgraded; release names: map[cool-app:cool-app reliable-backend:reliable-backend
+                          organization-awesome-app:organization-awesome-app]'
+            - created: '2021-02-18T17:45:34.38175483Z'
+              message: Marked as Success
+          hostname: ''
+          name: aweigh-debt
+          pull_request: 3520
+          qa_type: ''
+          ref_map:
+            organization/cool-app: master
+            organization/reliable-backend: master
+            organization/awesome-app: dynamic-tld-support
+          repo: organization/awesome-app
+          source_branch: dynamic-tld-support
+          source_ref: dynamic-tld-support
+          source_sha: 60fca9f2a340ecc8a03f208eb27dc45d9d410252
+          status: Success
+          user: bobsmith
+    env:
+      summary: "Environment Details Response Example"
+      value:
+        name: eparchial-manifest-destiny
+        created: '2021-03-24T23:09:06.832246Z'
+        events:
+          - created: '2021-03-24T23:08:46.600387605Z'
+            message: spawned
+          - created: '2021-03-24T23:08:46.684560586Z'
+            message: 'webhook event id: ecd604a8-cf63-4536-8bdf-c83f4dd27d50'
+          - created: '2021-03-24T23:08:54.200958318Z'
+            message: 'creating namespace: nitro-96517-eparchial-manifest-destiny'
+          - created: '2021-03-24T23:08:54.263118013Z'
+            message: 'building container: organization/reliable-backend:a6593cc6e2ff530ef0ccd872b9f4b6466598cead'
+          - created: '2021-03-24T23:08:54.359604057Z'
+            message: installing tiller into namespace
+          - created: '2021-03-24T23:08:54.394465482Z'
+            message: 'building container: organization/awesome-app:b519def177c7ca1c855d15539b5a3314eeb5ff90'
+          - created: '2021-03-24T23:08:54.397195464Z'
+            message: 'building container: organization/cool-app:0a63aa79565879e88f0eec36ed19a81a965d7479'
+          - created: '2021-03-24T23:08:56.810781995Z'
+            message: Marked as Cancelled
+          - created: '2021-03-24T23:09:04.534629056Z'
+            message: Marked as Failure
+          - created: '2021-03-24T23:09:04.544497904Z'
+            message: Marked as Failure
+          - created: '2021-03-24T23:09:06.824599562Z'
+            message: Marked as Spawned
+          - created: '2021-03-24T23:09:06.827189537Z'
+            message: reusing environment record for webhook event c643f8eb-e903-4155-9cf5-505f1923beb0
+          - created: '2021-03-24T23:09:06.844013853Z'
+            message: 'webhook event id: c643f8eb-e903-4155-9cf5-505f1923beb0'
+          - created: '2021-03-24T23:09:14.400262282Z'
+            message: 'creating namespace: nitro-87012-eparchial-manifest-destiny'
+          - created: '2021-03-24T23:09:14.445484499Z'
+            message: 'building container: organization/awesome-app:610f09cefcdec3e3468d14a781037d9c58a7b95f'
+          - created: '2021-03-24T23:09:14.497301671Z'
+            message: 'building container: organization/cool-app:0a63aa79565879e88f0eec36ed19a81a965d7479'
+          - created: '2021-03-24T23:09:14.499761749Z'
+            message: 'building container: organization/reliable-backend:a6593cc6e2ff530ef0ccd872b9f4b6466598cead'
+          - created: '2021-03-24T23:09:14.518606837Z'
+            message: installing tiller into namespace
+          - created: '2021-03-24T23:09:17.912562605Z'
+            message: 'build finished: organization/cool-app: b688e242-f65f-4a79-ad35-a7b5ee8ed9dd'
+          - created: '2021-03-24T23:09:18.171093466Z'
+            message: 'build finished: organization/reliable-backend: 84e52bbf-bdd2-40f4-b172-4d3cdfddcc5a'
+          - created: '2021-03-24T23:09:24.602140295Z'
+            message: image build complete; installing chart for reliable-backend
+          - created: '2021-03-24T23:09:24.603825869Z'
+            message: image build complete; installing chart for cool-app
+          - created: '2021-03-24T23:09:46.501416625Z'
+            message: image build still pending; waiting to install chart for organization-awesome-app
+          - created: '2021-03-24T23:09:56.506436537Z'
+            message: image build still pending; waiting to install chart for organization-awesome-app
+          - created: '2021-03-24T23:10:06.511985081Z'
+            message: image build still pending; waiting to install chart for organization-awesome-app
+          - created: '2021-03-24T23:10:16.518812277Z'
+            message: image build still pending; waiting to install chart for organization-awesome-app
+          - created: '2021-03-24T23:14:23.755408995Z'
+            message: 'build finished: organization/awesome-app: 0ffd2b19-9844-4c89-baba-b51d6a6c338a'
+          - created: '2021-03-24T23:14:26.674776938Z'
+            message: image build complete; installing chart for organization-awesome-app
+          - created: '2021-03-24T23:16:15.291184822Z'
+            message: 'all charts installed; release names: map[cool-app:cool-app reliable-backend:reliable-backend
+                            organization-awesome-app:organization-awesome-app]'
+          - created: '2021-03-24T23:16:15.30458093Z'
+            message: Marked as Success
+        hostname: ''
+        qa_type: ''
+        user: bobsmith
+        repo: organization/awesome-app
+        pull_request: 337
+        source_sha: 610f09cefcdec3e3468d14a781037d9c58a7b95f
+        base_sha: f7e8e09ea634fdedb37623afc0f7835b7d0ad417
+        source_branch: awesome-feature
+        base_branch: master
+        source_ref: awesome-feature
+        status: Success
+        ref_map:
+          organization/cool-app: master
+          organization/reliable-backend: master
+          organization/awesome-app: awesome-feature
+        commit_sha_map:
+          organization/cool-app: 0a63aa79565879e88f0eec36ed19a81a965d7479
+          organization/reliable-backend: a6593cc6e2ff530ef0ccd872b9f4b6466598cead
+          organization/awesome-app: 610f09cefcdec3e3468d14a781037d9c58a7b95f
+        amino_service_to_port: {}
+        amino_kubernetes_namespace: ''
+        amino_environment_id: 0
+    eventLog:
+      summary: "Event Log Response Example"
+      value:
+        created: '2021-02-18T17:36:59.12556Z'
+        env_name: aweigh-debt
+        id: c8229a78-ac7f-47cc-912a-b3881542a346
+        log:
+          - '2021/02/18 17:36:59 event: c8229a78-ac7f-47cc-912a-b3881542a346: checking for triggering
+                          repo acyl.yml in organization/awesome-app@60fca9f2a340ecc8a03f208eb27dc45d9d410252'
+          - '2021/02/18 17:36:59 event: c8229a78-ac7f-47cc-912a-b3881542a346: acyl.yml found,
+                          continuing to process event'
+          - '2021/02/18 17:36:59 event: c8229a78-ac7f-47cc-912a-b3881542a346: starting async
+                          processing for synchronize'
+          - '2021/02/18 17:36:59 event: c8229a78-ac7f-47cc-912a-b3881542a346: preemptive locker:
+                          locking key: 6693125619309346816 for repo: organization/awesome-app, pr: 3520'
+          - '2021/02/18 17:37:09 event: c8229a78-ac7f-47cc-912a-b3881542a346: fetching and processing
+                          environment config'
+          - '2021/02/18 17:37:09 event: c8229a78-ac7f-47cc-912a-b3881542a346: fetching acyl.yml
+                          for organization/awesome-app@60fca9f2a340ecc8a03f208eb27dc45d9d410252'
+          - '2021/02/18 17:37:09 event: c8229a78-ac7f-47cc-912a-b3881542a346: processing dependency:
+                          cool-app (parent: , ancestor: cool-app)'
+          - '2021/02/18 17:37:09 event: c8229a78-ac7f-47cc-912a-b3881542a346: fetching branches
+                          for organization/cool-app'
+          - '2021/02/18 17:37:09 event: c8229a78-ac7f-47cc-912a-b3881542a346: calculated ref
+                          for repo dependency: organization/cool-app: master (0a63aa79565879e88f0eec36ed19a81a965d7479)'
+          - '2021/02/18 17:37:09 event: c8229a78-ac7f-47cc-912a-b3881542a346: fetching acyl.yml
+                          for organization/cool-app@0a63aa79565879e88f0eec36ed19a81a965d7479'
+          - '2021/02/18 17:37:10 event: c8229a78-ac7f-47cc-912a-b3881542a346: processing completed
+                          for dependency: cool-app'
+          - '2021/02/18 17:37:10 event: c8229a78-ac7f-47cc-912a-b3881542a346: processing dependency:
+                          reliable-backend (parent: , ancestor: reliable-backend)'
+          - '2021/02/18 17:37:10 event: c8229a78-ac7f-47cc-912a-b3881542a346: fetching branches
+                          for organization/cool-app-proxy'
+          - '2021/02/18 17:37:10 event: c8229a78-ac7f-47cc-912a-b3881542a346: calculated ref
+                          for repo dependency: organization/cool-app-proxy: master (a6593cc6e2ff530ef0ccd872b9f4b6466598cead)'
+          - '2021/02/18 17:37:10 event: c8229a78-ac7f-47cc-912a-b3881542a346: fetching acyl.yml
+                          for organization/cool-app-proxy@a6593cc6e2ff530ef0ccd872b9f4b6466598cead'
+          - '2021/02/18 17:37:10 event: c8229a78-ac7f-47cc-912a-b3881542a346: processing completed
+                          for dependency: reliable-backend'
+          - '2021/02/18 17:37:11 event: c8229a78-ac7f-47cc-912a-b3881542a346: fetching chart
+                          and vars for dependency: organization-awesome-app'
+          - '2021/02/18 17:37:11 event: c8229a78-ac7f-47cc-912a-b3881542a346: getting directory
+                          contents: organization/awesome-app@60fca9f2a340ecc8a03f208eb27dc45d9d410252: apps/.helm/charts/awesome-app'
+          - '2021/02/18 17:37:14 event: c8229a78-ac7f-47cc-912a-b3881542a346: getting file contents:
+                          organization/awesome-app@60fca9f2a340ecc8a03f208eb27dc45d9d410252: apps/.helm/releases/awesome-app/dqa.yaml'
+          - '2021/02/18 17:37:15 event: c8229a78-ac7f-47cc-912a-b3881542a346: success fetching
+                          chart and vars for dependency: organization-awesome-app'
+          - '2021/02/18 17:37:15 event: c8229a78-ac7f-47cc-912a-b3881542a346: fetching chart
+                          and vars for dependency: cool-app'
+          - '2021/02/18 17:37:15 event: c8229a78-ac7f-47cc-912a-b3881542a346: fetching chart
+                          and vars for dependency: reliable-backend'
+          - '2021/02/18 17:37:15 event: c8229a78-ac7f-47cc-912a-b3881542a346: getting directory
+                          contents: organization/cool-app@0a63aa79565879e88f0eec36ed19a81a965d7479:
+                          .helm/charts/cool-app-services'
+          - '2021/02/18 17:37:15 event: c8229a78-ac7f-47cc-912a-b3881542a346: getting directory
+                          contents: organization/cool-app-proxy@a6593cc6e2ff530ef0ccd872b9f4b6466598cead:
+                          .helm/charts/reliable-backend'
+          - '2021/02/18 17:37:16 event: c8229a78-ac7f-47cc-912a-b3881542a346: getting file contents:
+                          organization/cool-app-proxy@a6593cc6e2ff530ef0ccd872b9f4b6466598cead: .helm/releases/reliable-backend/dqa.yaml'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: success fetching
+                          chart and vars for dependency: reliable-backend'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: getting file contents:
+                          organization/cool-app@0a63aa79565879e88f0eec36ed19a81a965d7479: .helm/releases/cool-app-services/dqa.yaml'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: success fetching
+                          chart and vars for dependency: cool-app'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: config signature
+                          matches previous successful environment: performing helm release upgrades'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: chart generated
+                          for dependency: cool-app (offset 1)'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: chart generated
+                          for dependency: reliable-backend (offset 2)'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: chart generated
+                          for triggering repo'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: starting image
+                          build (retry: 1): organization/awesome-app (ref: 60fca9f2a340ecc8a03f208eb27dc45d9d410252)'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: objgraph:
+                          root: organization-awesome-app; levels: 2'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: objgraph:
+                          level 0: ["organization-awesome-app"]'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: starting image
+                          build (retry: 1): organization/cool-app (ref: 0a63aa79565879e88f0eec36ed19a81a965d7479)'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: objgraph:
+                          level 1: ["cool-app" "reliable-backend"]'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: starting image
+                          build (retry: 1): organization/cool-app-proxy (ref: a6593cc6e2ff530ef0ccd872b9f4b6466598cead)'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: reliable-backend:
+                          starting install'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: cool-app:
+                          starting install'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: reliable-backend:
+                          install callback indicated Wait; delaying'
+          - '2021/02/18 17:37:17 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: cool-app:
+                          install callback indicated Wait; delaying'
+          - '2021/02/18 17:37:21 event: c8229a78-ac7f-47cc-912a-b3881542a346: build finished:
+                          organization/cool-app-proxy: 7e2d909c-09c1-43ff-87c2-0927f34a659e'
+          - '2021/02/18 17:37:21 event: c8229a78-ac7f-47cc-912a-b3881542a346: build finished:
+                          organization/cool-app: fc367cc9-ec7e-4a51-8117-afb26c562177'
+          - '2021/02/18 17:37:27 event: c8229a78-ac7f-47cc-912a-b3881542a346: furan: organization/awesome-app:
+                          building (build id: 911f05fa-b800-4312-84a5-ecac0343d3db)'
+          - '2021/02/18 17:37:27 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: reliable-backend:
+                          install callback indicated Continue; proceeding'
+          - '2021/02/18 17:37:27 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: cool-app:
+                          install callback indicated Continue; proceeding'
+          - '2021/02/18 17:37:27 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: cool-app:
+                          running helm upgrade'
+          - '2021/02/18 17:37:27 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: reliable-backend:
+                          running helm upgrade'
+          - '2021/02/18 17:37:30 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: cool-app:
+                          running completed callback'
+          - '2021/02/18 17:37:30 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: upgrade:
+                          cool-app complete; waiting for health'
+          - '2021/02/18 17:37:30 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: cool-app:
+                          helm waited until it thought the chart installation was healthy; done'
+          - '2021/02/18 17:37:30 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: cool-app:
+                          done'
+          - '2021/02/18 17:37:33 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: reliable-backend:
+                          running completed callback'
+          - '2021/02/18 17:37:33 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: upgrade:
+                          reliable-backend complete; waiting for health'
+          - '2021/02/18 17:37:33 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: reliable-backend:
+                          helm waited until it thought the chart installation was healthy; done'
+          - '2021/02/18 17:37:33 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: reliable-backend:
+                          done'
+          - '2021/02/18 17:37:33 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: organization-awesome-app:
+                          starting install'
+          - '2021/02/18 17:37:33 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: organization-awesome-app:
+                          install callback indicated Wait; delaying'
+          - '2021/02/18 17:37:43 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: organization-awesome-app:
+                          install callback indicated Wait; delaying'
+          - '2021/02/18 17:37:53 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: organization-awesome-app:
+                          install callback indicated Wait; delaying'
+          - '2021/02/18 17:44:45 event: c8229a78-ac7f-47cc-912a-b3881542a346: furan: organization/awesome-app:
+                          pushing (build id: 911f05fa-b800-4312-84a5-ecac0343d3db)'
+          - '2021/02/18 17:44:54 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: organization-awesome-app:
+                          install callback indicated Wait; delaying'
+          - '2021/02/18 17:44:59 event: c8229a78-ac7f-47cc-912a-b3881542a346: build finished:
+                          organization/awesome-app: 911f05fa-b800-4312-84a5-ecac0343d3db'
+          - '2021/02/18 17:45:04 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: organization-awesome-app:
+                          install callback indicated Continue; proceeding'
+          - '2021/02/18 17:45:04 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: organization-awesome-app:
+                          running helm upgrade'
+          - '2021/02/18 17:45:34 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: organization-awesome-app:
+                          running completed callback'
+          - '2021/02/18 17:45:34 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: upgrade:
+                          organization-awesome-app complete; waiting for health'
+          - '2021/02/18 17:45:34 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: organization-awesome-app:
+                          helm waited until it thought the chart installation was healthy; done'
+          - '2021/02/18 17:45:34 event: c8229a78-ac7f-47cc-912a-b3881542a346: metahelm: organization-awesome-app:
+                          done'
+          - '2021/02/18 17:45:36 event: c8229a78-ac7f-47cc-912a-b3881542a346: success processing
+                          update event (env: "aweigh-debt"); done'
+        pull_request: 337
+        repo: organization/awesome-app
+        updated:
+          Time: '2021-02-18T17:45:36.018196Z'
+          Valid: true
+        webhook_payload: eyDJShCY3Rpb24iOiJzeW5jaHJvbml6ZSIsIm51bWJlIk9yZ...
+
+paths:
+  /v2/envs/_search:
+    get:
+      tags:
+        - v2
+      summary: "Search environments from optional parameters, minimum one parameter required; multiple parameters are combined with a logical AND: (PR = n AND repo = foo/bar AND status = x)"
+      operationId: "# Search Environments"
+      parameters:
+        - $ref: '#/components/parameters/readOnlyAPIKey'
+        - $ref: '#/components/parameters/prParam'
+        - $ref: '#/components/parameters/repoParam'
+        - $ref: '#/components/parameters/statusParam'
+        - $ref: '#/components/parameters/sourceBranchParam'
+        - $ref: '#/components/parameters/sourceShaParam'
+        - $ref: '#/components/parameters/userParam'
+      responses:
+        200:
+          description: "Returns list of detailed environments as defined by QAEnvironment (v2)"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QAEnvironment_v2'
+              example:
+                $ref: '#/components/examples/envs'
+        400:
+          $ref: '#/components/responses/400'
+        500:
+          $ref: '#/components/responses/500'
+  /v2/envs/{name}:
+    get:
+      tags:
+        - v2
+      summary: "Get environment details"
+      operationId: "# Environment Details"
+      parameters:
+        - $ref: '#/components/parameters/readOnlyAPIKey'
+        - $ref: '#/components/parameters/envNameParam'
+      responses:
+        200:
+          description: "Returns detailed environment as defined by QAEnvironment (v2)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QAEnvironment_v2'
+              example:
+                $ref: '#/components/examples/env'
+        404:
+          $ref: '#/components/responses/404'
+        500:
+          $ref: '#/components/responses/500'
+  /v2/eventlog/{id}:
+    get:
+      tags:
+        - v2
+      summary: "Get event logs by id"
+      operationId: "# Event Logs"
+      parameters:
+        - $ref: '#/components/parameters/readOnlyAPIKey'
+        - $ref: '#/components/parameters/eventLogIdParam'
+      responses:
+        200:
+          description: "Returns the EventLog that include debug logs for requested id, especially helpful troubleshooting failed environments"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventLog'
+              example:
+                $ref: '#/components/examples/eventLog'
+        400:
+          $ref: '#/components/responses/400'
+        404:
+          $ref: '#/components/responses/404'
+        500:
+          $ref: '#/components/responses/500'

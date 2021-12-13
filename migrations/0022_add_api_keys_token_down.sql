@@ -1,0 +1,5 @@
+DROP INDEX IF EXISTS token_idx;
+
+ALTER TABLE api_keys DROP COLUMN IF EXISTS token;
+
+DROP EXTENSION IF EXISTS pgcrypto;

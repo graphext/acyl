@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/dollarshaveclub/acyl/pkg/config"
-	"github.com/dollarshaveclub/acyl/pkg/nitro/metahelm"
 	"github.com/dollarshaveclub/acyl/pkg/secrets"
 	"github.com/dollarshaveclub/pvc"
 	"github.com/spf13/cobra"
@@ -22,8 +21,7 @@ var vaultConfig config.VaultConfig
 var secretsConfig config.SecretsConfig
 var secretsbackend string
 var k8sClientConfig config.K8sClientConfig
-var tillerImageName string
-var tillerConfig metahelm.TillerConfig
+var helmClientConfig config.HelmClientConfig
 
 var RootCmd = &cobra.Command{
 	Use:   "acyl",
@@ -46,7 +44,8 @@ func init() {
 	RootCmd.PersistentFlags().StringVar(&secretsbackend, "secrets-backend", "vault", "Secret backend (one of: vault,env)")
 	RootCmd.PersistentFlags().StringVar(&secretsConfig.Mapping, "secrets-mapping", "", "Secrets mapping template string (required)")
 	RootCmd.PersistentFlags().StringVar(&k8sClientConfig.JWTPath, "k8s-jwt-path", "/var/run/secrets/kubernetes.io/serviceaccount/token", "Path to the JWT used to authenticate the k8s client to the API server")
-	RootCmd.PersistentFlags().StringVar(&tillerConfig.Image, "tiller-image", "helmpack/tiller:v2.17.0", "Name of Tiller image to use when installing charts")
+	RootCmd.PersistentFlags().StringVar(&helmClientConfig.HelmDriver, "helm-driver", os.Getenv("HELM_DRIVER"), "Sets helm driver (default: secrets)")
+	RootCmd.PersistentFlags().StringVar(&helmClientConfig.KubeContext, "kubectx", "", "Sets kubernetes context (overrides current context)")
 }
 
 func clierr(msg string, params ...interface{}) {
@@ -58,37 +57,32 @@ func getSecretClient() (*pvc.SecretsClient, error) {
 	ops := []pvc.SecretsClientOption{}
 	switch secretsbackend {
 	case "vault":
-		secretsConfig.Backend = pvc.WithVaultBackend()
+		var vat pvc.VaultAuthentication
 		switch {
 		case vaultConfig.TokenAuth:
 			log.Printf("secrets: using vault token auth")
+			vat = pvc.TokenVaultAuth
 			ops = []pvc.SecretsClientOption{
-				pvc.WithVaultAuthentication(pvc.Token),
 				pvc.WithVaultToken(vaultConfig.Token),
 			}
 		case vaultConfig.K8sAuth:
 			log.Printf("secrets: using vault k8s auth")
+			vat = pvc.K8sVaultAuth
 			jwt, err := ioutil.ReadFile(vaultConfig.K8sJWTPath)
 			if err != nil {
 				clierr("error reading k8s jwt path: %v", err)
 			}
 			log.Printf("secrets: role: %v; auth path: %v", vaultConfig.K8sRole, vaultConfig.K8sAuthPath)
 			ops = []pvc.SecretsClientOption{
-				pvc.WithVaultAuthentication(pvc.K8s),
 				pvc.WithVaultK8sAuth(string(jwt), vaultConfig.K8sRole),
 				pvc.WithVaultK8sAuthPath(vaultConfig.K8sAuthPath),
 			}
 		case vaultConfig.AppID != "" && vaultConfig.UserIDPath != "":
-			log.Printf("secrets: using vault AppID auth")
-			ops = []pvc.SecretsClientOption{
-				pvc.WithVaultAuthentication(pvc.AppID),
-				pvc.WithVaultAppID(vaultConfig.AppID),
-				pvc.WithVaultUserIDPath(vaultConfig.UserIDPath),
-			}
+			clierr("app id auth no longer supported")
 		default:
 			clierr("no Vault authentication methods were supplied")
 		}
-		ops = append(ops, pvc.WithVaultHost(vaultConfig.Addr))
+		secretsConfig.Backend = pvc.WithVaultBackend(vat, vaultConfig.Addr)
 	case "env":
 		secretsConfig.Backend = pvc.WithEnvVarBackend()
 	default:

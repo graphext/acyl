@@ -37,7 +37,6 @@ import (
 	"github.com/mitchellh/go-homedir"
 
 	dockerconfig "github.com/docker/cli/cli/config"
-	dockerconfigfile "github.com/docker/cli/cli/config/configfile"
 	dockertypes "github.com/docker/docker/api/types"
 	dockerclient "github.com/docker/docker/client"
 	"github.com/dollarshaveclub/acyl/pkg/config"
@@ -114,7 +113,7 @@ type testEnvConfig struct {
 	statedir, workingdir, wordnetpath                    string
 	privileged, enableUI                                 bool
 	pullRequest                                          uint
-	dockerCfg                                            *dockerconfigfile.ConfigFile
+	dockerCfg                                            map[string]dockertypes.AuthConfig
 	k8sCfg                                               config.K8sConfig
 	uiPort                                               int
 	uiAssets                                             string
@@ -126,8 +125,7 @@ var testMockUser = "john.doe"
 func init() {
 	configTestCmd.PersistentFlags().UintVar(&testEnvCfg.pullRequest, "pr", 999, "Pull request number for simulated create/update events")
 	configTestCmd.PersistentFlags().StringVar(&testEnvCfg.buildMode, "image-build-mode", "none", "Image build mode (see help)")
-	configTestCmd.PersistentFlags().StringVar(&testEnvCfg.kubeCfgPath, "kubecfg", "", "Path to kubeconfig (overrides KUBECONFIG")
-	configTestCmd.PersistentFlags().StringVar(&testEnvCfg.kubeCtx, "kubectx", "", "kube context (overrides current context)")
+	configTestCmd.PersistentFlags().StringVar(&testEnvCfg.kubeCfgPath, "kubecfg", "", "Path to kubeconfig (overrides KUBECONFIG)")
 	configTestCmd.PersistentFlags().StringVar(&testEnvCfg.imagepullsecretPath, "image-pull-secret", "", "Path to manual image pull secret YAML file (optional, see help)")
 	configTestCmd.PersistentFlags().BoolVar(&testEnvCfg.privileged, "privileged", false, "give the environment service account ClusterAdmin privileges via a ClusterRoleBinding (use this if your application requires ClusterAdmin abilities)")
 	configTestCmd.PersistentFlags().StringVar(&k8sGroupBindingsStr, "k8s-group-bindings", "", "optional k8s RBAC group bindings for the environment namespace (comma-separated) in GROUP1=CLUSTER_ROLE1,GROUP2=CLUSTER_ROLE2 format (ex: users=edit)")
@@ -212,7 +210,11 @@ func checkTestEnvConfig() error {
 		return errors.Wrap(err, "error getting docker config credentials")
 	}
 	dcfg.AuthConfigs = auths
-	testEnvCfg.dockerCfg = dcfg
+	dockerAuthCfg := make(map[string]dockertypes.AuthConfig, len(auths))
+	for k, v := range auths {
+		dockerAuthCfg[k] = dockertypes.AuthConfig(v)
+	}
+	testEnvCfg.dockerCfg = dockerAuthCfg
 	if testEnvCfg.imagepullsecretPath != "" {
 		_, err := os.Stat(testEnvCfg.imagepullsecretPath)
 		if err != nil {
@@ -248,7 +250,7 @@ func dockerAuthsToImagePullSecret() (config.K8sSecret, error) {
 	auths := struct {
 		Auths map[string]dockertypes.AuthConfig `json:"auths"`
 	}{
-		Auths: testEnvCfg.dockerCfg.AuthConfigs,
+		Auths: testEnvCfg.dockerCfg,
 	}
 	b, err := json.Marshal(auths)
 	if err != nil {
@@ -377,7 +379,7 @@ func testConfigSetup(dl persistence.DataLayer) (*nitroenv.Manager, context.Conte
 		return nil, nil, nil, errors.Wrap(err, "error creating preemptive locker factory")
 	}
 	mg, ri, _, ctx := generateLocalMetaGetter(dl, getStatusCallback())
-	ibb, err := getImageBackend(dl, mg.RC, testEnvCfg.dockerCfg.AuthConfigs)
+	ibb, err := getImageBackend(dl, mg.RC, testEnvCfg.dockerCfg)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error getting image builder")
 	}
@@ -390,10 +392,7 @@ func testConfigSetup(dl persistence.DataLayer) (*nitroenv.Manager, context.Conte
 	if testEnvCfg.privileged {
 		testEnvCfg.k8sCfg.PrivilegedRepoWhitelist = []string{ri.GitHubRepoName}
 	}
-	tcfg := tillerConfig
-	tcfg.ServerConnectRetries = 10
-	tcfg.ServerConnectRetryDelay = 2 * time.Second
-	ci, err := metahelm.NewChartInstallerWithClientsetFromContext(ib, dl, fs, mc, testEnvCfg.k8sCfg.GroupBindings, testEnvCfg.k8sCfg.PrivilegedRepoWhitelist, testEnvCfg.k8sCfg.SecretInjections, tcfg, testEnvCfg.kubeCfgPath, testEnvCfg.kubeCtx)
+	ci, err := metahelm.NewChartInstallerWithClientsetFromContext(ib, dl, fs, mc, testEnvCfg.k8sCfg.GroupBindings, testEnvCfg.k8sCfg.PrivilegedRepoWhitelist, testEnvCfg.k8sCfg.SecretInjections, testEnvCfg.kubeCfgPath, helmClientConfig)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error getting chart installer")
 	}

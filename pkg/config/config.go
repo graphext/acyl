@@ -125,6 +125,11 @@ func (kc *K8sConfig) ProcessSecretInjections(sf SecretFetcher, injstr string) er
 	return nil
 }
 
+type HelmClientConfig struct {
+	HelmDriver  string
+	KubeContext string
+}
+
 type ConsulConfig struct {
 	Addr       string
 	LockPrefix string

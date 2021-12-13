@@ -13,8 +13,7 @@ import (
 	"strings"
 
 	yaml "gopkg.in/yaml.v2"
-	"k8s.io/helm/pkg/releaseutil"
-	"k8s.io/helm/pkg/tiller"
+	"helm.sh/helm/v3/pkg/releaseutil"
 )
 
 // K8sManifest models the k8s object metadata we care about
@@ -27,8 +26,8 @@ type K8sManifest struct {
 
 // SplitManifests takes a map of rendered templates and splits them into the
 // detected manifests.
-func SplitManifests(templates map[string]string) []tiller.Manifest {
-	var listManifests []tiller.Manifest
+func SplitManifests(templates map[string]string) []releaseutil.Manifest {
+	var listManifests []releaseutil.Manifest
 	// extract kind and name
 	re := regexp.MustCompile("kind:(.*)\n")
 	for k, v := range templates {
@@ -43,7 +42,7 @@ func SplitManifests(templates map[string]string) []tiller.Manifest {
 			log.Printf("error unmarshaling template: %v; ignoring", err)
 			continue
 		}
-		m := tiller.Manifest{
+		m := releaseutil.Manifest{
 			Name:    k,
 			Content: v,
 			Head: &releaseutil.SimpleHead{

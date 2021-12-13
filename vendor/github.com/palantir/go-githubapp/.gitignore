@@ -1,8 +1,0 @@
-/build/
-/vendor/
-
-# IDEA
-*.iml
-*.iws
-*.ipr
-.idea/

@@ -1,10 +1,8 @@
 package pvc
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"time"
 
@@ -19,13 +17,12 @@ const (
 // VaultAuthentication enumerates the supported Vault authentication methods
 type VaultAuthentication int
 
-// Various Vault authentication methods
+// Supported Vault authentication methods
 const (
-	None    VaultAuthentication = iota // No authentication at all
-	AppID                              // AppID
-	Token                              // Token authentication
-	AppRole                            // AppRole
-	K8s                                // Kubernetes
+	UnknownVaultAuth VaultAuthentication = iota // Unknown/unset
+	TokenVaultAuth                              // Token authentication
+	AppRoleVaultAuth                            // AppRole
+	K8sVaultAuth                                // Kubernetes
 )
 
 type vaultBackendGetter struct {
@@ -40,21 +37,14 @@ func newVaultBackendGetter(vb *vaultBackend, vc vaultIO) (*vaultBackendGetter, e
 		return nil, fmt.Errorf("Vault host is required")
 	}
 	switch vb.authentication {
-	case None:
-		break
-	case Token:
+	case TokenVaultAuth:
 		err = vc.TokenAuth(vb.token)
 		if err != nil {
 			return nil, fmt.Errorf("error authenticating with supplied token: %v", err)
 		}
-	case AppID:
-		err = vc.AppIDAuth(vb.appid, vb.userid, vb.useridpath)
-		if err != nil {
-			return nil, fmt.Errorf("error performing AppID authentication: %v", err)
-		}
-	case AppRole:
+	case AppRoleVaultAuth:
 		return nil, fmt.Errorf("AppRole authentication not implemented")
-	case K8s:
+	case K8sVaultAuth:
 		err = vc.K8sAuth(vb.k8sjwt, vb.roleid)
 		if err != nil {
 			return nil, fmt.Errorf("error performing Kubernetes authentication: %v", err)
@@ -81,21 +71,19 @@ func (vbg *vaultBackendGetter) Get(id string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error mapping id to path: %v", err)
 	}
-	v, err := vbg.vc.GetStringValue(path)
+	v, err := vbg.vc.GetValue(path)
 	if err != nil {
 		return nil, fmt.Errorf("error reading value: %v", err)
 	}
-	return []byte(v), nil
+	return v, nil
 }
 
 // vaultIO describes an object capable of interacting with Vault
 type vaultIO interface {
 	TokenAuth(token string) error
-	AppIDAuth(appid string, userid string, useridpath string) error
 	AppRoleAuth(roleid string) error
 	K8sAuth(jwt, roleid string) error
-	GetStringValue(path string) (string, error)
-	GetBase64Value(path string) ([]byte, error)
+	GetValue(path string) ([]byte, error)
 }
 
 // vaultClient is the concrete implementation of vaultIO interacting with a real Vault server
@@ -107,8 +95,13 @@ type vaultClient struct {
 
 var _ vaultIO = &vaultClient{}
 
+type vaultClientFactory func(config *vaultBackend) (vaultIO, error)
+
+// Allow tests to override and supply a fake vault client
+var getVaultClient vaultClientFactory = newVaultClient
+
 // newVaultClient returns a vaultClient object or error
-func newVaultClient(config *vaultBackend) (*vaultClient, error) {
+func newVaultClient(config *vaultBackend) (vaultIO, error) {
 	vc := vaultClient{}
 	c, err := api.NewClient(&api.Config{Address: config.host})
 	vc.client = c
@@ -168,25 +161,6 @@ func (c *vaultClient) getTokenAndConfirm(route string, payload interface{}) erro
 	return nil
 }
 
-// appIDAuth attempts to perform app-id authorization.
-func (c *vaultClient) AppIDAuth(appid string, userid string, useridpath string) error {
-	if userid == "" {
-		uidb, err := ioutil.ReadFile(useridpath)
-		if err != nil {
-			return fmt.Errorf("error reading useridpath: %v: %v", useridpath, err)
-		}
-		userid = string(uidb)
-	}
-	bodystruct := struct {
-		AppID  string `json:"app_id"`
-		UserID string `json:"user_id"`
-	}{
-		AppID:  appid,
-		UserID: string(userid),
-	}
-	return c.getTokenAndConfirm("/v1/auth/app-id/login", &bodystruct)
-}
-
 func (c *vaultClient) AppRoleAuth(roleid string) error {
 	return nil
 }
@@ -205,6 +179,8 @@ func (c *vaultClient) K8sAuth(jwt, roleid string) error {
 	return c.getTokenAndConfirm(fmt.Sprintf("/v1/auth/%v/login", c.config.k8sauthpath), &payload)
 }
 
+var DefaultVaultValueKey = "value"
+
 // getValue retrieves value at path
 func (c *vaultClient) getValue(path string) (interface{}, error) {
 	c.client.SetToken(c.token)
@@ -216,35 +192,28 @@ func (c *vaultClient) getValue(path string) (interface{}, error) {
 	if s == nil {
 		return nil, fmt.Errorf("secret not found")
 	}
-	if _, ok := s.Data["value"]; !ok {
-		return nil, fmt.Errorf("secret missing 'value' key")
+	key := DefaultVaultValueKey
+	if c.config.valuekey != "" {
+		key = c.config.valuekey
 	}
-	return s.Data["value"], nil
+	if _, ok := s.Data[key]; !ok {
+		return nil, fmt.Errorf("secret missing value key: %v", key)
+	}
+	return s.Data[key], nil
 }
 
-// GetStringValue retrieves a value expected to be a string
-func (c *vaultClient) GetStringValue(path string) (string, error) {
+// GetValue retrieves a value
+func (c *vaultClient) GetValue(path string) ([]byte, error) {
 	val, err := c.getValue(path)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	switch val := val.(type) {
-	case string:
+	case []byte:
 		return val, nil
+	case string:
+		return []byte(val), nil
 	default:
-		return "", fmt.Errorf("unexpected type for %v value: %T", path, val)
+		return nil, fmt.Errorf("unexpected type for %v value: %T", path, val)
 	}
-}
-
-// GetBase64Value retrieves and decodes a value expected to be base64-encoded binary
-func (c *vaultClient) GetBase64Value(path string) ([]byte, error) {
-	val, err := c.GetStringValue(path)
-	if err != nil {
-		return []byte{}, err
-	}
-	decoded, err := base64.StdEncoding.DecodeString(val)
-	if err != nil {
-		return []byte{}, fmt.Errorf("vault path: %v: error decoding base64 value: %v", path, err)
-	}
-	return decoded, nil
 }

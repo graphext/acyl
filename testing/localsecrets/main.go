@@ -118,7 +118,7 @@ func getSlackToken() string {
 
 func injectFuranSecrets(kc *kubernetes.Clientset, ns string) {
 	fmt.Println("getting furan vault configmap")
-	cfgm, err := kc.CoreV1().ConfigMaps(ns).Get("vault", metav1.GetOptions{})
+	cfgm, err := kc.CoreV1().ConfigMaps(ns).Get(context.Background(), "vault", metav1.GetOptions{})
 	if err != nil {
 		ferr("error getting furan vault configmap: %v", err)
 	}
@@ -141,7 +141,7 @@ func injectFuranSecrets(kc *kubernetes.Clientset, ns string) {
 	cfgm.Data["secrets.json"] = string(jdd)
 
 	fmt.Println("updating furan vault configmap")
-	if _, err := kc.CoreV1().ConfigMaps(ns).Update(cfgm); err != nil {
+	if _, err := kc.CoreV1().ConfigMaps(ns).Update(context.Background(), cfgm, metav1.UpdateOptions{}); err != nil {
 		ferr("error updating furan vault configmap: %v", err)
 	}
 
@@ -163,7 +163,7 @@ func injectFuranSecrets(kc *kubernetes.Clientset, ns string) {
 
 func injectAcylSecrets(kc *kubernetes.Clientset, ns string) {
 	fmt.Println("getting acyl secrets")
-	s, err := kc.CoreV1().Secrets(ns).Get("dummy-acyl-secrets", metav1.GetOptions{})
+	s, err := kc.CoreV1().Secrets(ns).Get(context.Background(),"dummy-acyl-secrets", metav1.GetOptions{})
 	if err != nil {
 		ferr("error getting acyl secret: %v", err)
 	}
@@ -173,7 +173,7 @@ func injectAcylSecrets(kc *kubernetes.Clientset, ns string) {
 	s.Data["slack_token"] = []byte(getSlackToken())
 
 	fmt.Println("updating acyl secrets")
-	if _, err := kc.CoreV1().Secrets(ns).Update(s); err != nil {
+	if _, err := kc.CoreV1().Secrets(ns).Update(context.Background(), s, metav1.UpdateOptions{}); err != nil {
 		ferr("error updating acyl secret: %v", err)
 	}
 
@@ -184,7 +184,7 @@ func injectAcylSecrets(kc *kubernetes.Clientset, ns string) {
 }
 
 func findAndBouncePod(kc *kubernetes.Clientset, ns, label string) error {
-	pods, err := kc.CoreV1().Pods(ns).List(metav1.ListOptions{
+	pods, err := kc.CoreV1().Pods(ns).List(context.Background(), metav1.ListOptions{
 		LabelSelector: label,
 	})
 	if err != nil {
@@ -194,10 +194,10 @@ func findAndBouncePod(kc *kubernetes.Clientset, ns, label string) error {
 		return fmt.Errorf("unexpected pod count: %v (wanted 1)", n)
 	}
 	pod := pods.Items[0]
-	if err := kc.CoreV1().Pods(ns).Delete(pod.Name, &metav1.DeleteOptions{}); err != nil {
+	if err := kc.CoreV1().Pods(ns).Delete(context.Background(), pod.Name, metav1.DeleteOptions{}); err != nil {
 		return fmt.Errorf("error deleting pod: %w", err)
 	}
-	watch, err := kc.CoreV1().Pods(ns).Watch(metav1.ListOptions{
+	watch, err := kc.CoreV1().Pods(ns).Watch(context.Background(), metav1.ListOptions{
 		LabelSelector: label,
 	})
 	if err != nil {

@@ -14,7 +14,7 @@ import (
 
 	"github.com/dollarshaveclub/acyl/pkg/ghapp"
 	"github.com/dollarshaveclub/acyl/pkg/ghclient"
-
+	nitroerrors "github.com/dollarshaveclub/acyl/pkg/nitro/errors"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
@@ -27,7 +27,6 @@ import (
 	ncontext "github.com/dollarshaveclub/acyl/pkg/nitro/context"
 	"github.com/dollarshaveclub/acyl/pkg/persistence"
 	"github.com/dollarshaveclub/acyl/pkg/spawner"
-	"github.com/gorilla/mux"
 	muxtrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gorilla/mux"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
@@ -113,12 +112,12 @@ func (api *v0api) register(r *muxtrace.Router) error {
 	if r == nil {
 		return fmt.Errorf("router is nil")
 	}
-	// backwards-compatible routes
+	// non-versioned routes
 	r.HandleFunc("/spawn", middlewareChain(api.legacyGithubWebhookHandler, waitMiddleware.waitOnRequest)).Methods("POST")
 	r.HandleFunc("/webhook", middlewareChain(api.legacyGithubWebhookHandler, waitMiddleware.waitOnRequest)).Methods("POST")
-	r.HandleFunc("/envs/_search", middlewareChain(authMiddleware.tokenAuth(api.envSearchHandler, models.ReadOnlyPermission))).Methods("GET")
-	r.HandleFunc("/envs/{name}", middlewareChain(authMiddleware.tokenAuth(api.envDetailHandler, models.ReadOnlyPermission))).Methods("GET")
-	r.HandleFunc("/envs/{name}", middlewareChain(authMiddleware.tokenAuth(api.envDestroyHandler, models.AdminPermission), waitMiddleware.waitOnRequest)).Methods("DELETE")
+	r.HandleFunc("/envs/_search", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorize(api.envSearchHandler), models.ReadOnlyPermission))).Methods("GET")
+	r.HandleFunc("/envs/{name}", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorizeEnv(api.envDetailHandler), models.ReadOnlyPermission))).Methods("GET")
+	r.HandleFunc("/envs/{name}", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorizeEnv(api.envDestroyHandler), models.AdminPermission), waitMiddleware.waitOnRequest)).Methods("DELETE")
 	ghahandler := api.gha.Handler()
 	r.HandleFunc("/ghapp/webhook", middlewareChain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// allow request logging by bundling a zerolog logger into the request context
@@ -128,29 +127,19 @@ func (api *v0api) register(r *muxtrace.Router) error {
 	}), waitMiddleware.waitOnRequest)).Methods("POST")
 
 	// DEPRECATED: no longer supported, please use /envs/_search
-	r.HandleFunc("/envs", middlewareChain(authMiddleware.tokenAuth(api.envListHandler, models.ReadOnlyPermission))).Methods("GET")
-	r.HandleFunc("/envs/", middlewareChain(authMiddleware.tokenAuth(api.envListHandler, models.ReadOnlyPermission))).Methods("GET")
-
-	// DEPRECATED: original Lambda-based DQA implementation, no longer supported
-	r.HandleFunc("/envs/{name}/success", middlewareChain(authMiddleware.tokenAuth(api.envSuccessHandler, models.WritePermission))).Methods("POST")
-	r.HandleFunc("/envs/{name}/failure", middlewareChain(authMiddleware.tokenAuth(api.envFailureHandler, models.WritePermission))).Methods("POST")
-	r.HandleFunc("/envs/{name}/event", middlewareChain(authMiddleware.tokenAuth(api.envEventHandler, models.WritePermission))).Methods("POST")
+	r.HandleFunc("/envs", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorize(api.envListHandler), models.ReadOnlyPermission))).Methods("GET")
+	r.HandleFunc("/envs/", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorize(api.envListHandler), models.ReadOnlyPermission))).Methods("GET")
 
 	// v0 routes
 	r.HandleFunc("/v0/spawn", middlewareChain(api.legacyGithubWebhookHandler, waitMiddleware.waitOnRequest)).Methods("POST")
 	r.HandleFunc("/v0/webhook", middlewareChain(api.legacyGithubWebhookHandler, waitMiddleware.waitOnRequest)).Methods("POST")
-	r.HandleFunc("/v0/envs/_search", middlewareChain(authMiddleware.tokenAuth(api.envSearchHandler, models.ReadOnlyPermission))).Methods("GET")
-	r.HandleFunc("/v0/envs/{name}", middlewareChain(authMiddleware.tokenAuth(api.envDetailHandler, models.ReadOnlyPermission))).Methods("GET")
-	r.HandleFunc("/v0/envs/{name}", middlewareChain(authMiddleware.tokenAuth(api.envDestroyHandler, models.AdminPermission), waitMiddleware.waitOnRequest)).Methods("DELETE")
+	r.HandleFunc("/v0/envs/_search", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorize(api.envSearchHandler), models.ReadOnlyPermission))).Methods("GET")
+	r.HandleFunc("/v0/envs/{name}", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorizeEnv(api.envDetailHandler), models.ReadOnlyPermission))).Methods("GET")
+	r.HandleFunc("/v0/envs/{name}", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorizeEnv(api.envDestroyHandler), models.AdminPermission), waitMiddleware.waitOnRequest)).Methods("DELETE")
 
 	// DEPRECATED: no longer supported, please use /v0/envs/_search
-	r.HandleFunc("/v0/envs", middlewareChain(authMiddleware.tokenAuth(api.envListHandler, models.ReadOnlyPermission))).Methods("GET")
-	r.HandleFunc("/v0/envs/", middlewareChain(authMiddleware.tokenAuth(api.envListHandler, models.ReadOnlyPermission))).Methods("GET")
-
-	// DEPRECATED: original Lambda-based DQA implementation, no longer supported
-	r.HandleFunc("/v0/envs/{name}/success", middlewareChain(authMiddleware.tokenAuth(api.envSuccessHandler, models.WritePermission))).Methods("POST")
-	r.HandleFunc("/v0/envs/{name}/failure", middlewareChain(authMiddleware.tokenAuth(api.envFailureHandler, models.WritePermission))).Methods("POST")
-	r.HandleFunc("/v0/envs/{name}/event", middlewareChain(authMiddleware.tokenAuth(api.envEventHandler, models.WritePermission))).Methods("POST")
+	r.HandleFunc("/v0/envs", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorize(api.envListHandler), models.ReadOnlyPermission))).Methods("GET")
+	r.HandleFunc("/v0/envs/", middlewareChain(authMiddleware.tokenAuth(authMiddleware.authorize(api.envListHandler), models.ReadOnlyPermission))).Methods("GET")
 
 	return nil
 }
@@ -213,6 +202,14 @@ func (api *v0api) processWebhook(ctx context.Context, action string, rrd models.
 	setTagsForGithubWebhookHandler(span, rrd)
 	ctx = tracer.ContextWithSpan(ctx, span)
 
+	var err error
+	finishWithError := func() {
+		if nitroerrors.IsCancelledError(err) {
+			err = nil
+		}
+		span.Finish(tracer.WithError(err))
+	}
+
 	switch action {
 	case "reopened":
 		fallthrough
@@ -220,8 +217,7 @@ func (api *v0api) processWebhook(ctx context.Context, action string, rrd models.
 		log("starting async processing for %v", action)
 		api.wg.Add(1)
 		go func() {
-			var err error
-			defer func() { span.Finish(tracer.WithError(err)) }()
+			defer finishWithError()
 			defer api.wg.Done()
 			ctx, cf := context.WithTimeout(ctx, MaxAsyncActionTimeout)
 			defer cf() // guarantee that any goroutines created with the ctx are cancelled
@@ -236,8 +232,7 @@ func (api *v0api) processWebhook(ctx context.Context, action string, rrd models.
 		log("starting async processing for %v", action)
 		api.wg.Add(1)
 		go func() {
-			var err error
-			defer func() { span.Finish(tracer.WithError(err)) }()
+			defer finishWithError()
 			defer api.wg.Done()
 			ctx, cf := context.WithTimeout(ctx, MaxAsyncActionTimeout)
 			defer cf() // guarantee that any goroutines created with the ctx are cancelled
@@ -252,8 +247,7 @@ func (api *v0api) processWebhook(ctx context.Context, action string, rrd models.
 		log("starting async processing for %v", action)
 		api.wg.Add(1)
 		go func() {
-			var err error
-			defer func() { span.Finish(tracer.WithError(err)) }()
+			defer finishWithError()
 			defer api.wg.Done()
 			ctx, cf := context.WithTimeout(ctx, MaxAsyncActionTimeout)
 			defer cf() // guarantee that any goroutines created with the ctx are cancelled
@@ -266,8 +260,8 @@ func (api *v0api) processWebhook(ctx context.Context, action string, rrd models.
 		}()
 	default:
 		log("unknown action type: %v", action)
-		err := fmt.Errorf("unknown action type: %v (event_log_id: %v)", action, eventlogger.GetLogger(ctx).ID.String())
-		span.Finish(tracer.WithError(err))
+		err = fmt.Errorf("unknown action type: %v (event_log_id: %v)", action, eventlogger.GetLogger(ctx).ID.String())
+		finishWithError()
 		return err
 	}
 
@@ -359,12 +353,23 @@ func (api *v0api) legacyGithubWebhookHandler(w http.ResponseWriter, r *http.Requ
 
 // DEPRECATED: no longer supported, please use /env/_search, or /v0/env/_search
 func (api *v0api) envListHandler(w http.ResponseWriter, r *http.Request) {
-	var fullDetails bool
-	envs, err := api.dl.GetQAEnvironments(r.Context())
+	apikey, ok := r.Context().Value(apiKeyCtxKey).(models.APIKey)
+	if !ok {
+		api.internalError(w, fmt.Errorf("unexpected api key type from context: %T", apikey))
+		return
+	}
+	envs := []models.QAEnvironment{}
+	var err error
+	if apikey.PermissionLevel == models.AdminPermission {
+		envs, err = api.dl.GetQAEnvironments(r.Context())
+	} else {
+		envs, err = api.dl.GetQAEnvironmentsByUser(r.Context(), apikey.GitHubUser)
+	}
 	if err != nil {
 		api.internalError(w, fmt.Errorf("error getting environments: %v", err))
 		return
 	}
+	var fullDetails bool
 	if val, ok := r.URL.Query()["full_details"]; ok {
 		for _, v := range val {
 			if v == "true" {
@@ -399,18 +404,12 @@ func (api *v0api) envListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *v0api) envDetailHandler(w http.ResponseWriter, r *http.Request) {
-	name := mux.Vars(r)["name"]
-	qa, err := api.dl.GetQAEnvironmentConsistently(r.Context(), name)
-	if err != nil {
-		api.internalError(w, fmt.Errorf("error getting environment: %v", err))
+	qa, ok := r.Context().Value(qaEnvCtxKey).(models.QAEnvironment)
+	if !ok {
+		api.internalError(w, fmt.Errorf("unexpected qa env type from context: %T", qa))
 		return
 	}
-	if qa == nil {
-		api.notfoundError(w)
-		return
-	}
-
-	output := v0QAEnvironmentFromQAEnvironment(qa)
+	output := v0QAEnvironmentFromQAEnvironment(&qa)
 	j, err := json.Marshal(output)
 	if err != nil {
 		api.internalError(w, fmt.Errorf("error marshaling environment: %v", err))
@@ -421,67 +420,26 @@ func (api *v0api) envDetailHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *v0api) envDestroyHandler(w http.ResponseWriter, r *http.Request) {
-	name := mux.Vars(r)["name"]
-	qa, err := api.dl.GetQAEnvironmentConsistently(r.Context(), name)
-	if err != nil {
-		api.internalError(w, err)
-		return
-	}
-	if qa == nil {
-		api.notfoundError(w)
+	qa, ok := r.Context().Value(qaEnvCtxKey).(models.QAEnvironment)
+	if !ok {
+		api.internalError(w, fmt.Errorf("unexpected qa env type from context: %T", qa))
 		return
 	}
 	go func() {
-		err := api.es.DestroyExplicitly(context.Background(), qa, models.DestroyApiRequest)
+		err := api.es.DestroyExplicitly(context.Background(), &qa, models.DestroyApiRequest)
 		if err != nil {
-			api.logger.Printf("error destroying QA: %v: %v", name, err)
+			api.logger.Printf("error destroying QA: %v: %v", qa.Name, err)
 		}
 	}()
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// DEPRECATED: original Lambda-based DQA implementation, no longer supported
-func (api *v0api) envSuccessHandler(w http.ResponseWriter, r *http.Request) {
-	name := mux.Vars(r)["name"]
-	err := api.es.Success(r.Context(), name)
-	if err != nil {
-		api.internalError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// DEPRECATED: original Lambda-based DQA implementation, no longer supported
-func (api *v0api) envFailureHandler(w http.ResponseWriter, r *http.Request) {
-	name := mux.Vars(r)["name"]
-	err := api.es.Failure(r.Context(), name, "")
-	if err != nil {
-		api.internalError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// DEPRECATED: original Lambda-based DQA implementation, no longer supported
-func (api *v0api) envEventHandler(w http.ResponseWriter, r *http.Request) {
-	name := mux.Vars(r)["name"]
-	defer r.Body.Close()
-	d := json.NewDecoder(r.Body)
-	event := models.QAEnvironmentEvent{}
-	err := d.Decode(&event)
-	if err != nil {
-		api.badRequestError(w, err)
-		return
-	}
-	err = api.dl.AddEvent(r.Context(), name, event.Message)
-	if err != nil {
-		api.internalError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (api *v0api) envSearchHandler(w http.ResponseWriter, r *http.Request) {
+	apikey, ok := r.Context().Value(apiKeyCtxKey).(models.APIKey)
+	if !ok {
+		api.internalError(w, fmt.Errorf("unexpected api key type from context: %T", apikey))
+		return
+	}
 	qvars := r.URL.Query()
 	if _, ok := qvars["pr"]; ok {
 		if _, ok := qvars["repo"]; !ok {
@@ -533,9 +491,16 @@ func (api *v0api) envSearchHandler(w http.ResponseWriter, r *http.Request) {
 			ops.Status = s
 		}
 	}
-	qas, err := api.dl.Search(r.Context(), ops)
+	qas := []models.QAEnvironment{}
+	var err error
+	if apikey.PermissionLevel == models.AdminPermission {
+		qas, err = api.dl.Search(r.Context(), ops)
+	} else {
+		qas, err = api.dl.SearchEnvsForUser(r.Context(), apikey.GitHubUser, ops)
+	}
 	if err != nil {
 		api.internalError(w, fmt.Errorf("error searching in DB: %v", err))
+		return
 	}
 	w.Header().Add("Content-Type", "application/json")
 	if len(qas) == 0 {

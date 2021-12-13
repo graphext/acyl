@@ -410,7 +410,7 @@ func (p *PGLayer) AddEvent(ctx context.Context, name string, msg string) error {
 	return err
 }
 
-// Search finds environments that satsify the parameters given.
+// Search finds environments that satisfy the parameters given.
 // Multiple parameters are combined with implicit AND.
 func (p *PGLayer) Search(ctx context.Context, opts models.EnvSearchParameters) ([]QAEnvironment, error) {
 	if isCancelled(ctx) {
@@ -490,6 +490,16 @@ func (p *PGLayer) Search(ctx context.Context, opts models.EnvSearchParameters) (
 	return p.collectRows(p.db.QueryContext(ctx, q, sargs...))
 }
 
+// SearchEnvsForUser finds environments for specified user that satisfy the parameters given.
+// Multiple parameters are combined with implicit AND.
+func (p *PGLayer) SearchEnvsForUser(ctx context.Context, user string, opts models.EnvSearchParameters) ([]QAEnvironment, error) {
+	if user == "" {
+		return nil, fmt.Errorf("search envs for user requires username")
+	}
+	opts.User = user
+	return p.Search(ctx, opts)
+}
+
 // GetMostRecent finds the most recent environments from the last n days.
 // Recency is defined by created/updated timestamps.
 // The returned slice is in descending order of recency.
@@ -499,6 +509,17 @@ func (p *PGLayer) GetMostRecent(ctx context.Context, n uint) ([]QAEnvironment, e
 	}
 	q := `SELECT ` + models.QAEnvironment{}.Columns() + fmt.Sprintf(` from qa_environments WHERE created >= (current_timestamp - interval '%v days') ORDER BY created DESC;`, n)
 	return p.collectRows(p.db.QueryContext(ctx, q))
+}
+
+// GetMostRecent finds the most recent environments for user from the last n days.
+// Recency is defined by created/updated timestamps.
+// The returned slice is in descending order of recency.
+func (p *PGLayer) GetMostRecentForUser(ctx context.Context, user string, n uint) ([]QAEnvironment, error) {
+	if isCancelled(ctx) {
+		return nil, errors.Wrap(ctx.Err(), "error getting most recent")
+	}
+	days := fmt.Sprintf(`created >= (current_timestamp - interval '%v days')`, n)
+	return p.collectRows(p.db.QueryContext(ctx, `SELECT `+models.QAEnvironment{}.Columns()+` from qa_environments WHERE username = $1 AND `+days+` ORDER BY created DESC;`, user))
 }
 
 // Close closes the database and any open connections

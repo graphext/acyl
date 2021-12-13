@@ -3,23 +3,28 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/golang:1.15
+      - image: circleci/golang:1.16
     working_directory: /go/src/github.com/dollarshaveclub/acyl
     steps:
       - checkout
-      # - run: curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-      # - run: dep status
-      # - run: go get -v
-      - run: go build
+      - run:
+          name: Update dependencies
+          command: go mod vendor
+      - run:
+          name: Compile Acyl binary
+          command: go build -v -o github.com/dollarshaveclub/acyl
   test:
     docker:
-      - image: circleci/golang:1.15
+      - image: circleci/golang:1.16
       - image: postgres:9.5.9-alpine
         environment:
         - POSTGRES_USER=acyl
     working_directory: /go/src/github.com/dollarshaveclub/acyl
     steps:
       - checkout
+      - run:
+          name: Update dependencies
+          command: go mod vendor
       - run:
           name: Wait for Postgres
           command: dockerize -wait tcp://localhost:5432 -timeout 1m

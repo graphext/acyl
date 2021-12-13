@@ -7,6 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
+	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/encoding/dot"
 	gpath "gonum.org/v1/gonum/graph/path"
 	"gonum.org/v1/gonum/graph/simple"
@@ -124,7 +125,7 @@ func (sr *synthRoot) Dependencies() []string {
 func (og *ObjectGraph) setRoot() error {
 	roots := []int64{}
 	for k := range og.idmap {
-		if len(og.g.To(k)) == 0 {
+		if og.g.To(k).Len() == 0 {
 			roots = append(roots, k)
 		}
 	}
@@ -153,14 +154,21 @@ func (og *ObjectGraph) setRoot() error {
 // https://en.wikipedia.org/wiki/Longest_path_problem#Acyclic_graphs_and_critical_paths
 func (og *ObjectGraph) calcLevels() {
 	wdg := simple.NewWeightedDirectedGraph(0, 0)
-	for _, n := range og.g.Nodes() {
+	var _ graph.Nodes
+	nodes := og.g.Nodes()
+	for nodes.Next() {
+		n := nodes.Node()
 		wdg.AddNode(n)
 	}
-	for _, e := range og.g.Edges() {
+	edges := og.g.Edges()
+	for edges.Next() {
+		e := edges.Edge()
 		wdg.SetWeightedEdge(wdg.NewWeightedEdge(e.From(), e.To(), -1))
 	}
 	pt, _ := gpath.BellmanFordFrom(wdg.Node(og.root), wdg) // negative cycles are impossible because this is a DAG
-	for _, c := range wdg.Nodes() {
+	wdgNodes := wdg.Nodes()
+	for wdgNodes.Next() {
+		c := wdgNodes.Node()
 		pth, _ := pt.To(c.ID())
 		lvl := len(pth) - 1
 		if lvl+1 > len(og.levels) {
@@ -199,7 +207,7 @@ func (og *ObjectGraph) Info() (root GraphObject, levels [][]GraphObject, err err
 
 // Dot returns the GraphWiz DOT output for the graph
 func (og *ObjectGraph) Dot(name string) ([]byte, error) {
-	b, err := dot.Marshal(og.g, name, "", "    ", true)
+	b, err := dot.Marshal(og.g, name, "", "    ")
 	if err != nil {
 		return nil, errors.Wrap(err, "error marshaling graph to dot")
 	}
