@@ -16,12 +16,12 @@ steps:
     - ${DRONE_COMMIT_SHA}
   when:
     branch:
-    - deploy
+    - master
     event:
       exclude:
       - pull_request
 ---
 kind: signature
-hmac: de9929041fa1dfce44f30bb9ac8da36be982fea6d838e4db443c125a46549fed
+hmac: fac8987023682c5720f8264512792f2291f9868498c061d3e881de7de5869982
 
 ...
