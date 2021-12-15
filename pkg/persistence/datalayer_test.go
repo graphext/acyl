@@ -1540,14 +1540,24 @@ func TestDataLayerGetEventLogsByEnvName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("should have succeeded: %v", err)
 	}
-	if i := len(logs); i != 1 {
-		t.Fatalf("expected length of 1: %v", i)
+	if i := len(logs); i != 2 {
+		t.Fatalf("expected length of 2: %v", i)
 	}
-	if logs[0].Status.Config.Status == 0 {
-		t.Fatalf("zero value for config status")
+	var config, tree bool
+	// at least one event should have a populated config and tree
+	for i := range logs {
+		if logs[i].Status.Config.Status != 0 {
+			config = true
+		}
+		if len(logs[i].Status.Tree) != 0 {
+			tree = true
+		}
 	}
-	if len(logs[0].Status.Tree) == 0 {
-		t.Fatalf("zero length for status tree")
+	if !config {
+		t.Fatalf("empty config status")
+	}
+	if !tree {
+		t.Fatalf("empty status tree")
 	}
 }
 
@@ -1574,7 +1584,7 @@ func TestDataLayerCreateEventLog(t *testing.T) {
 	defer tdl.TearDown()
 	el := models.EventLog{
 		ID:      uuid.Must(uuid.NewRandom()),
-		EnvName: "asdf",
+		EnvName: "foo-bar",
 		Log: []string{
 			"foo",
 		},
@@ -1626,15 +1636,18 @@ func TestDataLayerSetEventLogEnvName(t *testing.T) {
 	}
 	defer tdl.TearDown()
 	id := uuid.Must(uuid.Parse("db20d1e7-1e0d-45c6-bfe1-4ea24b7f4159"))
-	if err := dl.SetEventLogEnvName(id, "1234"); err != nil {
+	if err := dl.SetEventLogEnvName(id, "foo-bar"); err != nil {
 		t.Fatalf("should have succeeded: %v", err)
 	}
 	el, err := dl.GetEventLogByID(id)
 	if err != nil {
 		t.Fatalf("get should have succeeded: %v", err)
 	}
-	if el.EnvName != "1234" {
+	if el.EnvName != "foo-bar" {
 		t.Fatalf("bad env name: %v", el.EnvName)
+	}
+	if err := dl.SetEventLogEnvName(id, "asdf234565"); err == nil {
+		t.Fatalf("should have failed with invalid env name")
 	}
 }
 
@@ -2380,5 +2393,62 @@ func TestDeleteAPIKeyByID(t *testing.T) {
 	apikey, _ = dl.GetAPIKeyByToken(context.Background(), apikey.Token)
 	if apikey != nil {
 		t.Fatalf("error api key was not deleted: %v", apikey)
+	}
+}
+
+func TestRenameQAEnvironment(t *testing.T) {
+	dl, tdl := NewTestDataLayer(t)
+	if err := tdl.Setup(testDataPath); err != nil {
+		t.Fatalf("error setting up test database: %v", err)
+	}
+	defer tdl.TearDown()
+	ctx := context.Background()
+	qae, err := dl.GetQAEnvironment(ctx, "foo-bar")
+	if err != nil {
+		t.Fatalf("error getting foo-bar: %v", err)
+	}
+	newname := "john-doe-asdf123"
+	err = dl.RenameQAEnvironment(ctx, qae.ID, newname)
+	if err != nil {
+		t.Fatalf("should have succeeded: %v", err)
+	}
+	qae, err = dl.GetQAEnvironment(ctx, newname)
+	if err != nil {
+		t.Fatalf("error getting env by new name: %v", err)
+	}
+	if qae == nil {
+		t.Fatalf("should have found env by new name")
+	}
+	ke, err := dl.GetK8sEnv(ctx, newname)
+	if err != nil {
+		t.Fatalf("error getting k8s env by new name: %v", err)
+	}
+	if ke == nil {
+		t.Fatalf("should have found k8s env by new name")
+	}
+	if ke.EnvName != newname {
+		t.Fatalf("unexpected env name for k8s env: %v", ke.EnvName)
+	}
+	hrs, err := dl.GetHelmReleasesForEnv(ctx, newname)
+	if err != nil {
+		t.Fatalf("error getting helm releases by new name: %v", err)
+	}
+	if i := len(hrs); i != 2 {
+		t.Fatalf("expected 2 helm releases, got %v", i)
+	}
+	if hrs[0].EnvName != newname || hrs[1].EnvName != newname {
+		t.Fatalf("unexpected env name in helm releases: %+v", hrs)
+	}
+	els, err := dl.GetEventLogsByEnvName(newname)
+	if err != nil {
+		t.Fatalf("error getting event logs by new name: %v", err)
+	}
+	if els == nil {
+		t.Fatalf("should have found event logs by new name")
+	}
+	for i := range els {
+		if name := els[i].EnvName; name != newname {
+			t.Fatalf("expected new name for event log: %+v", els[i])
+		}
 	}
 }

@@ -1,14 +1,14 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{NAME}}
+  name: acyl-integration
 spec:
   template:
     spec:
       containers:
       - name: acyl-integration
-        image: quay.io/dollarshaveclub/acyl:{{TAG}}
-        imagePullPolicy: Always
+        image: acyl:integration
+        imagePullPolicy: Never
         command:
           - "/go/bin/acyl"
         args:

@@ -59,8 +59,15 @@ spec:
           - "--dogstatsd-tags"
           - "{{ .Values.app.metrics_tags }}"
         {{ end }}
+        {{ if .Values.app.furan2.enabled }}
+          - "--use-furan2"
+          - "--furan2-disable-tls-verification={{ .Values.app.furan2.disable_tls_verification }}"
+          - "--furan2-addr"
+          - "{{ .Values.app.furan2.addr }}"
+        {{ else }}
           - "--furan-addrs"
           - "{{ .Values.app.furan_addr }}"
+        {{ end }}
           - "--secrets-backend"
           - "{{ .Values.app.secrets_backend }}"
           - "--secrets-mapping"
@@ -167,6 +174,11 @@ spec:
               secretKeyRef:
                 name: dummy-acyl-secrets
                 key: image_pull_secret
+          - name: ACYL_FURAN2_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: dummy-acyl-secrets
+                key: furan2_api_key
           # ------- GitHub App Secrets ----------
           - name: ACYL_GITHUB_APP_ID
             valueFrom:

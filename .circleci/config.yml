@@ -1,9 +1,16 @@
-version: 2
+version: 2.1
+orbs:
+  kubernetes: circleci/kubernetes@0.11.2
 
 jobs:
   build:
     docker:
       - image: circleci/golang:1.16
+      - image: circleci/postgres:12-alpine-ram
+        environment:
+          POSTGRES_USER: acyl
+          POSTGRES_PASSWORD: acyl
+          POSTGRES_DB: acyl
     working_directory: /go/src/github.com/dollarshaveclub/acyl
     steps:
       - checkout
@@ -12,28 +19,13 @@ jobs:
           command: go mod vendor
       - run:
           name: Compile Acyl binary
-          command: go build -v -o github.com/dollarshaveclub/acyl
-  test:
-    docker:
-      - image: circleci/golang:1.16
-      - image: postgres:9.5.9-alpine
-        environment:
-        - POSTGRES_USER=acyl
-    working_directory: /go/src/github.com/dollarshaveclub/acyl
-    steps:
-      - checkout
-      - run:
-          name: Update dependencies
-          command: go mod vendor
+          command: go build
       - run:
           name: Wait for Postgres
           command: dockerize -wait tcp://localhost:5432 -timeout 1m
       - run:
-          name: Compile Acyl binary
-          command: go install github.com/dollarshaveclub/acyl
-      - run:
           name: Run Acyl migrations
-          command: acyl pg-migrate
+          command: ./acyl pg-migrate
       - run:
           name: Running tests
           working_directory: /go/src/github.com/dollarshaveclub/acyl
@@ -61,29 +53,87 @@ jobs:
           environment:
             POSTGRES_ALREADY_RUNNING: 1
 
-  nitro_integration:
-    docker:
-      - image: docker:stable-git
-    working_directory: /go/src/github.com/dollarshaveclub/acyl
+  integration_test:
+    machine:
+      image: ubuntu-2004:202010-01
+    environment:
+      K8S_VERSION: v1.15.12
+      MINIKUBE_VERSION: v1.23.0
     steps:
       - checkout
-      - setup_remote_docker
-      - run: apk update && apk add bash
-      - run: docker login quay.io -u "$QUAY_IO_USER" -p "$QUAY_IO_PWD"
+
+      # Build docker images (do this first so if it fails we don't bother w/ anything else)
       - run:
-          name: Building container image
-          command: docker build -t quay.io/dollarshaveclub/acyl:${CIRCLE_SHA1}-integration .
+          name: build docker image
+          command: docker build -t acyl:integration .
+          environment:
+            DOCKER_BUILDKIT: 1
+
+      # Set up local k8s
+      - kubernetes/install-kubectl
       - run:
-          name: Pushing container image
-          command: docker push quay.io/dollarshaveclub/acyl:${CIRCLE_SHA1}-integration
+          name: setup minikube
+          command: |
+            curl -Lo minikube https://github.com/kubernetes/minikube/releases/download/${MINIKUBE_VERSION}/minikube-linux-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/
       - run:
-          name: Running integration job (remote k8s)
-          command: ./testing/run_integration_job.sh
+          name: setup conntrack
+          command: sudo apt update && sudo apt-get install -y conntrack
+      - run:
+          name: start minikube
+          command: |
+            sudo -E minikube start --vm-driver=none --kubernetes-version=${K8S_VERSION} --extra-config=kubelet.resolv-conf=/run/systemd/resolve/resolv.conf
+      - run:
+          name: fix permissions
+          command: |
+            sudo chown -R circleci /home/circleci/.minikube/ &&
+            sudo chown -R circleci /home/circleci/.kube/
+      - run:
+          name: wait for minikube
+          command: |
+            JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}';
+            until kubectl get nodes -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do
+              sleep 1;
+            done
+      - run:
+          name: set default RBAC
+          command: |
+            # make default account cluster-admin
+            kubectl create clusterrolebinding default-cluster-admin --clusterrole cluster-admin --serviceaccount=default:default
+      - run:
+          name: setup secrets
+          working_directory: testing/
+          command: ./setup_cci_secrets.sh
+      - run:
+          name: start integration job
+          working_directory: testing/
+          command: kubectl apply -f ./integration-test-job.yaml
+
+      - run:
+          name: wait for job completion
+          command: |
+            jobname="acyl-integration"
+            until [[ $SECONDS -gt 600 ]] ||
+              [[ $(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}') == "True" ]] ||
+              [[ $(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}') == "True" ]]; do
+              echo "waiting for job completion..."
+              sleep 5
+            done
+            success=$(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')
+            if [[ "${success}" == "True" ]]; then
+              echo "job success"
+              exit 0
+            else
+              echo "job failed or timeout"
+              kubectl get pods
+              kubectl describe pods
+              kubectl describe job/${jobname}
+              kubectl logs job/${jobname}
+              exit 1
+            fi
 
 workflows:
   version: 2
   build_and_test:
     jobs:
       - build
-      - test
-      - nitro_integration
+      - integration_test

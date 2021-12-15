@@ -12,7 +12,7 @@ import (
 
 	"github.com/dollarshaveclub/acyl/pkg/ghapp"
 
-	"github.com/google/go-github/github"
+	"github.com/google/go-github/v38/github"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 )
@@ -78,7 +78,7 @@ func (ghc *GitHubClient) GetBranch(ctx context.Context, repo, branch string) (Br
 	}
 	ctx, cf := context.WithTimeout(ctx, ghTimeout)
 	defer cf()
-	b, _, err := ghc.getClient(ctx).Repositories.GetBranch(ctx, rs[0], rs[1], branch)
+	b, _, err := ghc.getClient(ctx).Repositories.GetBranch(ctx, rs[0], rs[1], branch, false)
 	if err != nil {
 		return BranchInfo{}, fmt.Errorf("error getting branch: %v", err)
 	}
@@ -191,7 +191,7 @@ func (ghc *GitHubClient) GetCommitMessage(ctx context.Context, repo string, sha 
 	}
 	ctx, cf := context.WithTimeout(ctx, ghTimeout)
 	defer cf()
-	rc, _, err := ghc.getClient(ctx).Repositories.GetCommit(ctx, rs[0], rs[1], sha)
+	rc, _, err := ghc.getClient(ctx).Repositories.GetCommit(ctx, rs[0], rs[1], sha, &github.ListOptions{})
 	if err != nil {
 		return "", fmt.Errorf("error getting commit info: %v", err)
 	}
@@ -228,7 +228,7 @@ func (ghc *GitHubClient) GetFileContents(ctx context.Context, repo string, path 
 			}
 			return []byte(c), nil
 		}
-		rc, err := ghc.getClient(ctx).Repositories.DownloadContents(ctx, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
+		rc, _, err := ghc.getClient(ctx).Repositories.DownloadContents(ctx, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
 		if err != nil {
 			return nil, errors.Wrap(err, "error downloading file")
 		}

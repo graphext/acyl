@@ -588,10 +588,14 @@ func (api *v2api) userEnvsHandler(w http.ResponseWriter, r *http.Request) {
 		Statuses:     statuses,
 		CreatedSince: history,
 	}
-	// user-scoped by default unless allenvs=true
-	if r.URL.Query().Get("allenvs") == "true" {
+	switch {
+	case !api.oauth.Enforce:
+		// if we're not enforcing oauth, we want the UI to display all non-destroyed envs
+		// without filtering by user permissions
 		sparams.User = ""
-		repos, err := userPermissionsClient(api.oauth).GetUserVisibleRepos(r.Context(), uis)
+	case r.URL.Query().Get("allenvs") == "true":
+		sparams.User = ""
+		repos, err := userPermissionsClient(api.oauth, "").GetUserVisibleRepos(r.Context(), uis)
 		if err != nil {
 			api.rlogger(r).Logf("error getting user visible repos: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -687,7 +691,7 @@ func (api *v2api) userEnvDetailHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	repos, err := userPermissionsClient(api.oauth).GetUserVisibleRepos(r.Context(), uis)
+	repos, err := userPermissionsClient(api.oauth, qae.Repo).GetUserVisibleRepos(r.Context(), uis)
 	if err != nil {
 		api.rlogger(r).Logf("error getting user visible repos: %v: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -753,7 +757,7 @@ func (api *v2api) userEnvActionsRebuildHandler(w http.ResponseWriter, r *http.Re
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	repos, err := userPermissionsClient(api.oauth).GetUserWritableRepos(r.Context(), uis)
+	repos, err := userPermissionsClient(api.oauth, qae.Repo).GetUserWritableRepos(r.Context(), uis)
 	if err != nil {
 		api.rlogger(r).Logf("error getting user writable repos: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -874,7 +878,7 @@ func (api *v2api) userEnvNamePodsHandler(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	repos, err := userPermissionsClient(api.oauth).GetUserVisibleRepos(r.Context(), uis)
+	repos, err := userPermissionsClient(api.oauth, qae.Repo).GetUserVisibleRepos(r.Context(), uis)
 	if err != nil {
 		api.rlogger(r).Logf("error getting user visible repos: %v: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -966,7 +970,7 @@ func (api *v2api) userEnvPodContainersHandler(w http.ResponseWriter, r *http.Req
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	repos, err := userPermissionsClient(api.oauth).GetUserVisibleRepos(r.Context(), uis)
+	repos, err := userPermissionsClient(api.oauth, qae.Repo).GetUserVisibleRepos(r.Context(), uis)
 	if err != nil {
 		api.rlogger(r).Logf("error getting user visible repos: %v: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -1035,7 +1039,7 @@ func (api *v2api) userEnvPodLogsHandler(w http.ResponseWriter, r *http.Request) 
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	repos, err := userPermissionsClient(api.oauth).GetUserVisibleRepos(r.Context(), uis)
+	repos, err := userPermissionsClient(api.oauth, qae.Repo).GetUserVisibleRepos(r.Context(), uis)
 	if err != nil {
 		api.rlogger(r).Logf("error getting user visible repos: %v: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)

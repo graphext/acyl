@@ -259,6 +259,49 @@ func (fdl *FakeDataLayer) DeleteQAEnvironment(ctx context.Context, name string) 
 	return nil
 }
 
+func (fdl *FakeDataLayer) RenameQAEnvironment(ctx context.Context, id int64, newName string) error {
+	if isCancelled(ctx) {
+		return ctx.Err()
+	}
+	fdl.doDelay()
+	fdl.data.Lock()
+	defer fdl.data.Unlock()
+	if _, ok := fdl.data.d[newName]; ok {
+		return errors.New("name collision")
+	}
+	var qae *models.QAEnvironment
+	for _, v := range fdl.data.d {
+		if v.ID == id {
+			qae = v
+		}
+	}
+	if qae == nil {
+		return errors.New("env id not found")
+	}
+	oldname := qae.Name
+	qae.Name = newName
+	delete(fdl.data.d, oldname)
+	fdl.data.d[newName] = qae
+	if v, ok := fdl.data.k8s[oldname]; ok {
+		v.EnvName = newName
+		delete(fdl.data.k8s, oldname)
+		fdl.data.k8s[newName] = v
+	}
+	if v, ok := fdl.data.helm[oldname]; ok {
+		for i := range v {
+			v[i].EnvName = newName
+		}
+		delete(fdl.data.helm, oldname)
+		fdl.data.helm[newName] = v
+	}
+	for _, v := range fdl.data.elogs {
+		if v.EnvName == oldname {
+			v.EnvName = newName
+		}
+	}
+	return nil
+}
+
 func (fdl *FakeDataLayer) GetQAEnvironmentsByStatus(ctx context.Context, status string) ([]QAEnvironment, error) {
 	if isCancelled(ctx) {
 		return nil, ctx.Err()
@@ -945,6 +988,9 @@ func (fdl *FakeDataLayer) SetEventLogEnvName(id uuid.UUID, name string) error {
 	fdl.doDelay()
 	fdl.data.Lock()
 	defer fdl.data.Unlock()
+	if _, ok := fdl.data.d[name]; !ok {
+		return errors.New("env name not found")
+	}
 	elog := fdl.data.elogs[id]
 	if elog != nil {
 		fdl.data.elogs[id].EnvName = name

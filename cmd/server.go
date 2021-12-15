@@ -72,6 +72,9 @@ func init() {
 	serverCmd.PersistentFlags().StringVar(&githubConfig.TypePath, "repo-type-path", "acyl.yml", "Relative path within the target repo to look for the type definition")
 	serverCmd.PersistentFlags().StringVar(&serverConfig.WordnetPath, "wordnet-path", "/opt/words.json.gz", "Path to gzip-compressed JSON wordnet file")
 	serverCmd.PersistentFlags().StringSliceVar(&serverConfig.FuranAddrs, "furan-addrs", []string{}, "Furan hosts")
+	serverCmd.PersistentFlags().BoolVar(&serverConfig.EnableFuran2, "use-furan2", false, "Enable Furan 2 image builder")
+	serverCmd.PersistentFlags().BoolVar(&serverConfig.Furan2SkipVerifyTLS, "furan2-disable-tls-verification", false, "Disable Furan 2 TLS verification (FOR TESTING PURPOSES ONLY)")
+	serverCmd.PersistentFlags().StringVar(&serverConfig.Furan2Addr, "furan2-addr", "", "Furan2 host:port")
 	serverCmd.PersistentFlags().StringVar(&slackConfig.Channel, "slack-channel", "dyn-qa-notifications", "Slack channel for notifications")
 	serverCmd.PersistentFlags().StringVar(&slackConfig.Username, "slack-username", "Acyl Environment Notifier", "Slack username for notifications")
 	serverCmd.PersistentFlags().StringVar(&slackConfig.IconURL, "slack-icon-url", "https://picsum.photos/48/48", "Slack user avatar icon for notifications")
@@ -89,9 +92,9 @@ func init() {
 	serverCmd.PersistentFlags().StringVar(&k8sGroupBindingsStr, "k8s-group-bindings", "", "optional k8s RBAC group bindings (comma-separated) for new environment namespaces in GROUP1=CLUSTER_ROLE1,GROUP2=CLUSTER_ROLE2 format (ex: users=edit) (Nitro)")
 	serverCmd.PersistentFlags().StringVar(&k8sSecretsStr, "k8s-secret-injections", "", "optional k8s secret injections (comma-separated) for new environment namespaces in SECRET_NAME=VAULT_ID (Vault path using secrets mapping) format. Secret value in Vault must be a JSON-encoded object with two keys: 'data' (map of string to base64-encoded bytes), 'type' (string). (Nitro)")
 	serverCmd.PersistentFlags().StringVar(&k8sPrivilegedReposStr, "k8s-privileged-repo-whitelist", "dollarshaveclub/acyl", "optional comma-separated whitelist of GitHub repositories whose environment service accounts will be allowed cluster-admin privileges (Nitro)")
-	serverCmd.PersistentFlags().StringVarP(&dogstatsdAddr, "dogstatsd-addr", "q", "127.0.0.1:8125", "Address of dogstatsd for metrics")
+	serverCmd.PersistentFlags().StringVarP(&dogstatsdAddr, "dogstatsd-addr", "q", "127.0.0.1:8125", "Address of dogstatsd for metrics (set to empty string to disable)")
 	serverCmd.PersistentFlags().StringVar(&dogstatsdTags, "dogstatsd-tags", "", "Comma-separated list of tags to add to dogstatsd metrics (TAG:VALUE)")
-	serverCmd.PersistentFlags().StringVar(&datadogTracingAgentAddr, "datadog-tracing-agent-addr", "127.0.0.1:8126", "Address of datadog tracing agent")
+	serverCmd.PersistentFlags().StringVar(&datadogTracingAgentAddr, "datadog-tracing-agent-addr", "127.0.0.1:8126", "Address of datadog tracing agent (set to empty string to disable)")
 	serverCmd.PersistentFlags().StringVar(&datadogServiceName, "datadog-service-name", "acyl", "Default service name to be used for Datadog APM")
 	serverCmd.PersistentFlags().DurationVar(&serverConfig.OperationTimeoutOverride, "operation-timeout-override", 0, "Override for operation timeout (ex: 10m)")
 	serverCmd.PersistentFlags().Int64Var(&reaperLockKey, "reaper-lock-key", 0, "Lock key that the reaper process should attempt to obtain")
@@ -105,6 +108,9 @@ func setupServerLogger() {
 }
 
 func startDatadogTracer() {
+	if datadogTracingAgentAddr == "" {
+		return
+	}
 	opts := []tracer.StartOption{tracer.WithAgentAddr(datadogTracingAgentAddr)}
 	opts = append(opts, tracer.WithServiceName(datadogServiceName))
 	for _, tag := range strings.Split(dogstatsdTags, ",") {
@@ -121,13 +127,21 @@ func startDatadogTracer() {
 func server(cmd *cobra.Command, args []string) {
 	var err error
 
-	mc, err := metrics.NewDatadogCollector(dogstatsdAddr, logger)
-	if err != nil {
-		log.Fatalf("instantiating datadog: %v", err)
+	var mc metrics.Collector
+	if dogstatsdAddr == "" {
+		mc = &metrics.FakeCollector{}
+	} else {
+		mc, err = metrics.NewDatadogCollector(dogstatsdAddr, logger)
+		if err != nil {
+			log.Fatalf("instantiating datadog: %v", err)
+		}
 	}
 
-	pgConfig.DatadogServiceName = datadogServiceName + ".postgres"
-	pgConfig.EnableTracing = true
+	if datadogTracingAgentAddr != "" {
+		pgConfig.DatadogServiceName = datadogServiceName + ".postgres"
+		pgConfig.EnableTracing = true
+	}
+
 	dl, err := persistence.NewPGLayer(&pgConfig, logger)
 	if err != nil {
 		log.Fatalf("error opening PG database: %v", err)
@@ -153,19 +167,48 @@ func server(cmd *cobra.Command, args []string) {
 	slackapi := slack.New(slackConfig.Token)
 	mapper := slacknotifier.NewRepoBackedSlackUsernameMapper(rc, slackConfig.MapperRepo, slackConfig.MapperMapPath, slackConfig.MapperRepoRef, time.Duration(slackConfig.MapperUpdateIntervalSeconds)*time.Second)
 
-	nmc, err := nitrometrics.NewDatadogCollector("acyl.nitro.", dogstatsdAddr, strings.Split(dogstatsdTags, ","))
-	if err != nil {
-		log.Fatalf("error setting up nitro metrics collector: %v", err)
+	var nmc nitrometrics.Collector
+	if dogstatsdAddr == "" {
+		nmc = &nitrometrics.FakeCollector{}
+	} else {
+		nmc, err = nitrometrics.NewDatadogCollector("acyl.nitro.", dogstatsdAddr, strings.Split(dogstatsdTags, ","))
+		if err != nil {
+			log.Fatalf("error setting up nitro metrics collector: %v", err)
+		}
 	}
-	fbb, err := images.NewFuranBuilderBackend(serverConfig.FuranAddrs, dl, mc, os.Stderr, datadogServiceName)
-	if err != nil {
-		log.Fatalf("error getting Furan image builder backend: %v", err)
+
+	// Furan vs Furan 2
+	var ibb images.BuilderBackend
+	if serverConfig.EnableFuran2 {
+		// we need an *installation* github client for the furan 2 builder
+		rci, err := ghclient.NewGithubInstallationClient(githubConfig)
+		if err != nil {
+			log.Fatalf("error getting github installation client: %v", err)
+		}
+		var f2tls string
+		if serverConfig.Furan2SkipVerifyTLS {
+			f2tls = " (TLS verification DISABLED! THIS IS INSECURE!)"
+		}
+		log.Printf("using furan2 at %v for image builds%v", serverConfig.Furan2Addr, f2tls)
+		fbb, err := images.NewFuran2BuilderBackend(serverConfig.Furan2Addr, serverConfig.Furan2APIKey, int64(githubConfig.OAuth.AppInstallationID), serverConfig.Furan2SkipVerifyTLS, dl, rci, mc)
+		if err != nil {
+			log.Fatalf("error getting Furan 2 image builder backend: %v", err)
+		}
+		ibb = fbb
+	} else {
+		log.Printf("falling back to legacy furan 1 at %v for image builds", serverConfig.FuranAddrs)
+		fbb, err := images.NewFuranBuilderBackend(serverConfig.FuranAddrs, dl, mc, os.Stderr, datadogServiceName)
+		if err != nil {
+			log.Fatalf("error getting Furan image builder backend: %v", err)
+		}
+		ibb = fbb
 	}
 	ib := &images.ImageBuilder{
 		DL:      dl,
 		MC:      nmc,
-		Backend: fbb,
+		Backend: ibb,
 	}
+
 	fs := osfs.New("")
 	if err := k8sConfig.ProcessPrivilegedRepos(k8sPrivilegedReposStr); err != nil {
 		log.Fatalf("error in k8s privileged repos: %v", err)
@@ -292,6 +335,9 @@ func server(cmd *cobra.Command, args []string) {
 			api.WithDebugEndpoints(),
 			api.WithIPWhitelist(serverConfig.DebugEndpointsIPWhitelists),
 		)
+	}
+	if !githubConfig.OAuth.Enforce {
+		regops = append(regops, api.WithUIDummySessionUser(mockUser))
 	}
 
 	if err := httpapi.RegisterVersions(deps, regops...); err != nil {

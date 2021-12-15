@@ -46,7 +46,13 @@ func (el *EventLog) ScanValues() []interface{} {
 }
 
 func (el *EventLog) InsertValues() []interface{} {
-	return []interface{}{&el.ID, &el.EnvName, &el.Repo, &el.PullRequest, &el.WebhookPayload, &el.GitHubDeliveryID, pq.Array(&el.Log), &el.LogKey, &el.Status}
+	// if EnvName is blank, we want to insert nil so the foreign key field is null in the DB
+	// (an empty string will violate the fk constraint)
+	var envname *string
+	if el.EnvName != "" {
+		envname = &el.EnvName
+	}
+	return []interface{}{&el.ID, envname, &el.Repo, &el.PullRequest, &el.WebhookPayload, &el.GitHubDeliveryID, pq.Array(&el.Log), &el.LogKey, &el.Status}
 }
 
 func (el EventLog) InsertParams() string {

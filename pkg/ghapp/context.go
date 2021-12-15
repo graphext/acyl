@@ -7,7 +7,7 @@ import (
 
 	"github.com/shurcooL/githubv4"
 
-	"github.com/google/go-github/github"
+	"github.com/google/go-github/v38/github"
 )
 
 const (

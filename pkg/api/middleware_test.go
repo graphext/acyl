@@ -353,7 +353,9 @@ func TestMiddleware_SessionAuth(t *testing.T) {
 			dl := persistence.NewFakeDataLayer()
 			tt.dbSetupFunc(dl)
 			sauth := &sessionAuthenticator{
-				Enforce:     tt.enforce,
+				OAuth: OAuthConfig{
+					Enforce: tt.enforce,
+				},
 				CookieStore: newSessionsCookieStore(OAuthConfig{CookieAuthKey: tt.fields.cookiekeys[0], CookieEncKey: tt.fields.cookiekeys[1]}),
 				DL:          dl,
 			}

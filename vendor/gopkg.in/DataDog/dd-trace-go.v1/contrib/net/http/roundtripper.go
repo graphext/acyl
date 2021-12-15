@@ -1,7 +1,7 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016 Datadog, Inc.
 
 package http
 
@@ -17,17 +17,16 @@ import (
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
-const defaultResourceName = "http.request"
-
 type roundTripper struct {
 	base http.RoundTripper
 	cfg  *roundTripperConfig
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (res *http.Response, err error) {
+	resourceName := rt.cfg.resourceNamer(req)
 	opts := []ddtrace.StartSpanOption{
 		tracer.SpanType(ext.SpanTypeHTTP),
-		tracer.ResourceName(defaultResourceName),
+		tracer.ResourceName(resourceName),
 		tracer.Tag(ext.HTTPMethod, req.Method),
 		tracer.Tag(ext.HTTPURL, req.URL.Path),
 	}
@@ -37,7 +36,7 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (res *http.Response, err er
 	if rt.cfg.serviceName != "" {
 		opts = append(opts, tracer.ServiceName(rt.cfg.serviceName))
 	}
-	span, ctx := tracer.StartSpanFromContext(req.Context(), defaultResourceName, opts...)
+	span, ctx := tracer.StartSpanFromContext(req.Context(), "http.request", opts...)
 	defer func() {
 		if rt.cfg.after != nil {
 			rt.cfg.after(res, span)
@@ -56,11 +55,13 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (res *http.Response, err er
 	res, err = rt.base.RoundTrip(req.WithContext(ctx))
 	if err != nil {
 		span.SetTag("http.errors", err.Error())
+		span.SetTag(ext.Error, err)
 	} else {
 		span.SetTag(ext.HTTPCode, strconv.Itoa(res.StatusCode))
 		// treat 5XX as errors
 		if res.StatusCode/100 == 5 {
 			span.SetTag("http.errors", res.Status)
+			span.SetTag(ext.Error, fmt.Errorf("%d: %s", res.StatusCode, http.StatusText(res.StatusCode)))
 		}
 	}
 	return res, err

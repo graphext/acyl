@@ -30,15 +30,18 @@ application:
   - "image.repository=eu.gcr.io/graphext-development/acyl"
   - "resources.requests.cpu=20m"
   - "resources.requests.memory=100Mi"
+  - "app.furan2.enabled=true"
+  - "app.furan2.disable_tls_verification=true"
+  - "app.furan2.addr=furan:4000"
+
 dependencies:
   direct:
-    - repo: militarpancho/furan
+    - repo: graphext/furan
       name: furan
-      value_overrides:
-        - "replicaCount=3"
-        - "image.tag=886fb0764219869b45f1bb4356a5776358f2f4e5"
-        - "image.repository=eu.gcr.io/graphext-development/furan"
       default_branch: master
+      value_overrides:
+        - "image.repository=eu.gcr.io/graphext-development/furan2"
+        - 'app.builder_image='
     - chart_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql'
       chart_vars_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql/values.yaml'
       value_overrides:

@@ -98,8 +98,8 @@ func (p *PGLayer) CreateQAEnvironment(ctx context.Context, qae *QAEnvironment) e
 		return fmt.Errorf("error setting raw fields: %v", err)
 	}
 
-	q := `INSERT into qa_environments (` + qae.Columns() + `) VALUES (` + qae.InsertParams() + `);`
-	if _, err := p.db.ExecContext(ctx, q, qae.ScanValues()...); err != nil {
+	q := `INSERT into qa_environments (` + qae.InsertColumns() + `) VALUES (` + qae.InsertParams() + `);`
+	if _, err := p.db.ExecContext(ctx, q, qae.InsertValues()...); err != nil {
 		return errors.Wrapf(err, "error inserting QAEnvironment into database")
 	}
 	return nil
@@ -129,7 +129,7 @@ func (p *PGLayer) GetQAEnvironment(ctx context.Context, name string) (*QAEnviron
 }
 
 // GetQAEnvironmentConsistently finds a QAEnvironment by the name
-// field consistently.
+// field consistently. This is a legacy method from when DynamoDB was used as the datastore.
 func (p *PGLayer) GetQAEnvironmentConsistently(ctx context.Context, name string) (*QAEnvironment, error) {
 	// All writes are consistent in PG.
 	return p.GetQAEnvironment(ctx, name)
@@ -208,6 +208,32 @@ func (p *PGLayer) DeleteQAEnvironment(ctx context.Context, name string) (err err
 	}
 	if i, _ := res.RowsAffected(); i == 0 {
 		return fmt.Errorf("environment not destroyed (zero rows affected): make sure status is Destroyed prior to deleting environment record: %v", name)
+	}
+	return txn.Commit()
+}
+
+// RenameQAEnvironment renames environment id to newName consistently along with everything associated with it
+// via foreign keys. newName must be unique or this method will fail.
+// At the application level, the environment *must* be rebuilt immediately following this rename to keep data models and
+// objects consistent!
+func (p *PGLayer) RenameQAEnvironment(ctx context.Context, id int64, newName string) error {
+	if isCancelled(ctx) {
+		return errors.Wrap(ctx.Err(), "error renaming environment")
+	}
+	txn, err := p.db.Begin()
+	if err != nil {
+		return errors.Wrap(err, "error beginning txn")
+	}
+	defer func() {
+		if err != nil {
+			txn.Rollback()
+		}
+	}()
+	// all foreign key tables get updated via cascades
+	q := `UPDATE qa_environments SET name = $1 WHERE id = $2;`
+	_, err = txn.ExecContext(ctx, q, newName, id)
+	if err != nil {
+		return errors.Wrap(err, "error updating qa_environments")
 	}
 	return txn.Commit()
 }

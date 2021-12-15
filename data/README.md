@@ -26,8 +26,8 @@ The current words.json.gz contains the following word counts:
 
 | POS | Count |
 | --- | ----- |
-| noun/noun phrase | 82,115 |
-| adjective | 18,156 |
+| noun/noun phrase | 81,978 |
+| adjective | 18,133 |
 
 Generated environment names are of the form `<adjective>-<noun/noun phrase>`.
 

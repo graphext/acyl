@@ -26,7 +26,6 @@ const (
 	MaxAPIKeysLimit             = 10
 )
 
-
 type apiBase struct {
 	logger *log.Logger
 	wg     sync.WaitGroup
@@ -245,7 +244,7 @@ func (d *Dispatcher) RegisterVersions(deps *Dependencies, ro ...RegisterOption) 
 	authMiddleware.apiKeys = ropts.apiKeys
 	authMiddleware.DL = deps.DataLayer
 	ipWhitelistMiddleware.ipwl = ropts.ipWhitelist
-	sessionAuthMiddleware.Enforce = oauthcfg.Enforce
+	sessionAuthMiddleware.OAuth = oauthcfg
 	sessionAuthMiddleware.CookieStore = newSessionsCookieStore(oauthcfg)
 	sessionAuthMiddleware.DL = deps.DataLayer
 

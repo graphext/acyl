@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -84,10 +85,14 @@ func getAcylEnv() (models.QAEnvironment, *models.KubernetesEnvironment) {
 	return envs[0], kenv
 }
 
-var GitHubTokenEnvVar string
+var GitHubTokenEnvVar, QuayTokenEnvVar string
 
 func getGitHubToken() string {
 	return os.Getenv(GitHubTokenEnvVar)
+}
+
+func getQuayToken() string {
+	return os.Getenv(QuayTokenEnvVar)
 }
 
 var imagePullSecretPath string
@@ -116,11 +121,11 @@ func getSlackToken() string {
 	return os.Getenv(SlackTokenEnvVar)
 }
 
-func injectFuranSecrets(kc *kubernetes.Clientset, ns string) {
-	fmt.Println("getting furan vault configmap")
+func injectFuran1Secrets(kc *kubernetes.Clientset, ns string) {
+	fmt.Println("getting furan 1 vault configmap")
 	cfgm, err := kc.CoreV1().ConfigMaps(ns).Get(context.Background(), "vault", metav1.GetOptions{})
 	if err != nil {
-		ferr("error getting furan vault configmap: %v", err)
+		ferr("error getting furan 1 vault configmap: %v", err)
 	}
 
 	jd := cfgm.Data["secrets.json"]
@@ -140,37 +145,93 @@ func injectFuranSecrets(kc *kubernetes.Clientset, ns string) {
 
 	cfgm.Data["secrets.json"] = string(jdd)
 
-	fmt.Println("updating furan vault configmap")
+	fmt.Println("updating furan 1 vault configmap")
 	if _, err := kc.CoreV1().ConfigMaps(ns).Update(context.Background(), cfgm, metav1.UpdateOptions{}); err != nil {
 		ferr("error updating furan vault configmap: %v", err)
 	}
 
-	fmt.Println("finding and bouncing furan vault pod")
+	fmt.Println("finding and bouncing furan 1 vault pod")
 	if err := findAndBouncePod(kc, ns, "release=dollarshaveclub-furan-vault,app=vault"); err != nil {
-		ferr("error restarting furan vault pod: %v", err)
+		ferr("error restarting furan 1 vault pod: %v", err)
 	}
 
-	fmt.Println("giving a moment for furan vault to configure itself")
+	fmt.Println("giving a moment for furan 1 vault to configure itself")
 
 	time.Sleep(5 * time.Second)
 
-	fmt.Println("finding and bouncing furan pods")
+	fmt.Println("finding and bouncing furan 1 pods")
 
 	if err := findAndBouncePod(kc, ns, "app=furan,appsel=furan"); err != nil {
 		ferr("error restarting furan pod: %v", err)
 	}
 }
 
+func injectFuran2Secrets(kc *kubernetes.Clientset, ns string) {
+	fmt.Println("getting furan 2 vault configmap")
+	cfgm, err := kc.CoreV1().ConfigMaps(ns).Get(context.Background(), "vault", metav1.GetOptions{})
+	if err != nil {
+		ferr("error getting furan 2 vault configmap: %v", err)
+	}
+
+	jd := cfgm.Data["secrets.json"]
+	secrets := make(map[string]string)
+
+	if err := json.Unmarshal([]byte(jd), &secrets); err != nil {
+		ferr("error unmarshaling configmap json: %v", err)
+	}
+
+	secrets["github/token"] = getGitHubToken()
+	secrets["quay/token"] = getQuayToken()
+	secrets["aws/access_key_id"] = os.Getenv("AWS_ACCESS_KEY_ID")
+	secrets["aws/secret_access_key"] = os.Getenv("AWS_SECRET_ACCESS_KEY")
+
+	jdd, err := json.Marshal(&secrets)
+	if err != nil {
+		ferr("error marshaling configmap json: %v", err)
+	}
+
+	cfgm.Data["secrets.json"] = string(jdd)
+
+	fmt.Println("updating furan 2 vault configmap")
+	if _, err := kc.CoreV1().ConfigMaps(ns).Update(context.Background(), cfgm, metav1.UpdateOptions{}); err != nil {
+		ferr("error updating furan 2 vault configmap: %v", err)
+	}
+
+	fmt.Println("finding and bouncing furan 2 vault pod")
+	if err := findAndBouncePod(kc, ns, "release=dollarshaveclub-furan-vault,app=vault"); err != nil {
+		ferr("error restarting furan 2 vault pod: %v", err)
+	}
+
+	fmt.Println("giving a moment for furan 2 vault to configure itself")
+
+	time.Sleep(5 * time.Second)
+
+	fmt.Println("finding and bouncing furan 2 pods")
+
+	if err := findAndBouncePod(kc, ns, "app=furan2,release=furan"); err != nil {
+		ferr("error restarting furan 2 pod: %v", err)
+	}
+}
+
 func injectAcylSecrets(kc *kubernetes.Clientset, ns string) {
 	fmt.Println("getting acyl secrets")
-	s, err := kc.CoreV1().Secrets(ns).Get(context.Background(),"dummy-acyl-secrets", metav1.GetOptions{})
+	s, err := kc.CoreV1().Secrets(ns).Get(context.Background(), "dummy-acyl-secrets", metav1.GetOptions{})
 	if err != nil {
 		ferr("error getting acyl secret: %v", err)
 	}
 
+	s.Data["furan2_api_key"] = []byte(os.Getenv("FURAN2_API_KEY"))
 	s.Data["github_token"] = []byte(getGitHubToken())
 	s.Data["image_pull_secret"] = []byte(getImagePullSecret())
 	s.Data["slack_token"] = []byte(getSlackToken())
+	s.Data["github_app_id"] = []byte(os.Getenv("GITHUB_APP_ID"))
+	s.Data["github_app_oauth_installation_id"] = []byte(os.Getenv("GITHUB_APP_INSTALLATION_ID"))
+	// base64 decode because k8s will re-encode
+	data, err := base64.StdEncoding.DecodeString(os.Getenv("GITHUB_APP_PRIVATE_KEY"))
+	if err != nil {
+		ferr("error decoding github app private key: %v", err)
+	}
+	s.Data["github_app_private_key"] = data
 
 	fmt.Println("updating acyl secrets")
 	if _, err := kc.CoreV1().Secrets(ns).Update(context.Background(), s, metav1.UpdateOptions{}); err != nil {
@@ -229,11 +290,15 @@ func findAndBouncePod(kc *kubernetes.Clientset, ns, label string) error {
 	}
 }
 
+var furan2Enabled bool
+
 func init() {
 	pflag.StringVar(&contextName, "kube-context", "minikube", "Enforce using only this local kubectl context")
+	pflag.BoolVar(&furan2Enabled, "use-furan2", false, "use furan 2 instead of furan 1")
 	pflag.StringVar(&imagePullSecretPath, "image-pull-secret-path", "image-pull-secret.json", "Path to file containing an image pull secret dockerfgjson")
 	pflag.StringVar(&FuranDockerCfgPath, "dockercfg-path", "dockercfg.json", "Path to file containing dockercfg json for Furan")
 	pflag.StringVar(&GitHubTokenEnvVar, "github-token-env-var", "GITHUB_TOKEN", "Environment variable containing GitHub API token")
+	pflag.StringVar(&QuayTokenEnvVar, "quay-token-env-var", "QUAY_TOKEN", "Environment variable containing Quay API token")
 	pflag.StringVar(&SlackTokenEnvVar, "slack-token-env-var", "SLACK_TOKEN", "Environment variable containing Slack API token")
 }
 
@@ -246,7 +311,11 @@ func main() {
 
 	_, kc := MustK8sClient()
 
-	injectFuranSecrets(kc, kenv.Namespace)
+	if furan2Enabled {
+		injectFuran2Secrets(kc, kenv.Namespace)
+	} else {
+		injectFuran1Secrets(kc, kenv.Namespace)
+	}
 
 	injectAcylSecrets(kc, kenv.Namespace)
 

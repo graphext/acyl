@@ -30,10 +30,10 @@ func middlewareChain(f http.HandlerFunc, m ...middleware) http.HandlerFunc {
 }
 
 const (
-	apiKeyHeader   = "API-Key"		// string
-	apiKeyCtxKey   = "api_key"      // models.APIKey
-	qaEnvCtxKey    = "qa_env"       // models.QAEnvironment
-	eventLogCtxKey = "event_log"    // models.EventLog
+	apiKeyHeader   = "API-Key"   // string
+	apiKeyCtxKey   = "api_key"   // models.APIKey
+	qaEnvCtxKey    = "qa_env"    // models.QAEnvironment
+	eventLogCtxKey = "event_log" // models.EventLog
 )
 
 // authMiddleware checks for correct API key header or aborts with Unauthorized
@@ -137,7 +137,7 @@ func (ra reqAuthorizor) authorizeEventLog(f http.HandlerFunc) http.HandlerFunc {
 		idstr := mux.Vars(r)["id"]
 		id, err := uuid.Parse(idstr)
 		if err != nil {
-			log(errors.Wrap(err,"error parsing id").Error())
+			log(errors.Wrap(err, "error parsing id").Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -264,7 +264,7 @@ func getSessionFromContext(ctx context.Context) (models.UISession, error) {
 
 // sessionAuthenticator is a middleware that authenticates UI API calls with session cookies
 type sessionAuthenticator struct {
-	Enforce     bool
+	OAuth       OAuthConfig
 	CookieStore sessions.Store
 	DL          persistence.UISessionsDataLayer
 }
@@ -273,8 +273,16 @@ func (sa *sessionAuthenticator) sessionAuth(f http.HandlerFunc) http.HandlerFunc
 	if sa.CookieStore == nil || sa.DL == nil {
 		return f
 	}
-	if !sa.Enforce {
-		return f
+	if !sa.OAuth.Enforce {
+		return func(w http.ResponseWriter, r *http.Request) {
+			// create a dummy session for this request
+			uis := models.UISession{}
+			uis.EncryptandSetUserToken([]byte(`dummy token`), sa.OAuth.UserTokenEncKey)
+			uis.Authenticated = true
+			uis.GitHubUser = sa.OAuth.DummySessionUser
+			f(w, r.Clone(withSession(r.Context(), uis)))
+			return
+		}
 	}
 	log := func(msg string, args ...interface{}) {
 		log.Printf("sessionAuth: "+msg, args...)
@@ -330,21 +338,30 @@ func (sa *sessionAuthenticator) sessionAuth(f http.HandlerFunc) http.HandlerFunc
 }
 
 type userPermissions struct {
-	instID int64
-	deckey [32]byte
-	gcfunc func(tkn string) ghclient.GitHubAppInstallationClient
+	enforce    bool
+	targetRepo string
+	instID     int64
+	deckey     [32]byte
+	gcfunc     func(tkn string) ghclient.GitHubAppInstallationClient
 }
 
-func userPermissionsClient(oauth OAuthConfig) *userPermissions {
+func userPermissionsClient(oauth OAuthConfig, repo string) *userPermissions {
 	return &userPermissions{
-		instID: oauth.AppInstallationID,
-		deckey: oauth.UserTokenEncKey,
-		gcfunc: oauth.AppGHClientFactoryFunc,
+		enforce:    oauth.Enforce,
+		targetRepo: repo,
+		instID:     oauth.AppInstallationID,
+		deckey:     oauth.UserTokenEncKey,
+		gcfunc:     oauth.AppGHClientFactoryFunc,
 	}
 }
 
 // GetUserVisibleRepos returns the names of all repos (owner/repo) for which the authenticated user has "pull" permissions
 func (up *userPermissions) GetUserVisibleRepos(ctx context.Context, uis models.UISession) ([]string, error) {
+	if !up.enforce {
+		// if we're not enforcing oauth, we want to short-circuit the auth check
+		// and simply return whatever repo the request is targeting
+		return []string{up.targetRepo}, nil
+	}
 	tkn, err := uis.GetUserToken(up.deckey)
 	if err != nil {
 		return nil, errors.Wrap(err, "error decrypting user token")
@@ -367,6 +384,18 @@ func (up *userPermissions) GetUserVisibleRepos(ctx context.Context, uis models.U
 
 // GetUserWritableRepos returns the names of all repos (owner/repo) for which the authenticated user has "admin" or "push" permissions
 func (up *userPermissions) GetUserWritableRepos(ctx context.Context, uis models.UISession) (map[string]ghclient.AppRepoPermissions, error) {
+	if !up.enforce {
+		// if we're not enforcing oauth, we want to short-circuit the auth check
+		// and simply return whatever repo the request is targeting
+		return map[string]ghclient.AppRepoPermissions{
+			up.targetRepo: ghclient.AppRepoPermissions{
+				Repo:  up.targetRepo,
+				Admin: true,
+				Push:  true,
+				Pull:  true,
+			},
+		}, nil
+	}
 	tkn, err := uis.GetUserToken(up.deckey)
 	if err != nil {
 		return nil, errors.Wrap(err, "error decrypting user token")

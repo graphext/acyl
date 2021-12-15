@@ -21,6 +21,7 @@ type Logger struct {
 }
 
 // Init initializes the EventLog object in the database. This must be called exactly once prior to any log lines.
+// This method will persist the EventLog in the database with a null environment name
 func (l *Logger) Init(webhook []byte, repo string, pr uint) error {
 	if l.DL == nil {
 		return errors.New("datalayer is nil")

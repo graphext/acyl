@@ -1,7 +1,7 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016 Datadog, Inc.
 
 //go:generate msgp -unexported -marshal=false -o=span_msgp.go -tests=false
 
@@ -9,6 +9,7 @@ package tracer
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"runtime"
 	"runtime/debug"
@@ -19,6 +20,8 @@ import (
 
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/internal"
+	"gopkg.in/DataDog/dd-trace-go.v1/internal/globalconfig"
 
 	"github.com/tinylib/msgp/msgp"
 	"golang.org/x/xerrors"
@@ -64,9 +67,10 @@ type span struct {
 	ParentID uint64             `msg:"parent_id"`         // identifier of the span's direct parent
 	Error    int32              `msg:"error"`             // error status of the span; 0 means no errors
 
-	finished bool         `msg:"-"` // true if the span has been submitted to a tracer.
-	context  *spanContext `msg:"-"` // span propagation context
-	taskEnd  func()       // ends execution tracer (runtime/trace) task, if started
+	noDebugStack bool         `msg:"-"` // disables debug stack traces
+	finished     bool         `msg:"-"` // true if the span has been submitted to a tracer.
+	context      *spanContext `msg:"-"` // span propagation context
+	taskEnd      func()       // ends execution tracer (runtime/trace) task, if started
 }
 
 // Context yields the SpanContext for this Span. Note that the return
@@ -114,7 +118,11 @@ func (s *span) SetTag(key string, value interface{}) {
 		s.setMetric(key, v)
 		return
 	}
-	// not numeric, not a string, not a bool, and not an error
+	if v, ok := value.(fmt.Stringer); ok {
+		s.setMeta(key, v.String())
+		return
+	}
+	// not numeric, not a string, not a fmt.Stringer, not a bool, and not an error
 	s.setMeta(key, fmt.Sprint(value))
 }
 
@@ -196,6 +204,7 @@ func (s *span) setMeta(key, v string) {
 	if s.Meta == nil {
 		s.Meta = make(map[string]string, 1)
 	}
+	delete(s.Metrics, key)
 	switch key {
 	case ext.SpanName:
 		s.Name = v
@@ -242,6 +251,7 @@ func (s *span) setMetric(key string, v float64) {
 	if s.Metrics == nil {
 		s.Metrics = make(map[string]float64, 1)
 	}
+	delete(s.Meta, key)
 	switch key {
 	case ext.SamplingPriority:
 		// setting sampling priority per spec
@@ -255,24 +265,26 @@ func (s *span) setMetric(key string, v float64) {
 // Finish closes this Span (but not its children) providing the duration
 // of its part of the tracing session.
 func (s *span) Finish(opts ...ddtrace.FinishOption) {
-	var cfg ddtrace.FinishConfig
-	for _, fn := range opts {
-		fn(&cfg)
-	}
-	var t int64
-	if cfg.FinishTime.IsZero() {
-		t = now()
-	} else {
-		t = cfg.FinishTime.UnixNano()
-	}
-	if cfg.Error != nil {
-		s.Lock()
-		s.setTagError(cfg.Error, &errorConfig{
-			noDebugStack: cfg.NoDebugStack,
-			stackFrames:  cfg.StackFrames,
-			stackSkip:    cfg.SkipStackFrames,
-		})
-		s.Unlock()
+	t := now()
+	if len(opts) > 0 {
+		cfg := ddtrace.FinishConfig{
+			NoDebugStack: s.noDebugStack,
+		}
+		for _, fn := range opts {
+			fn(&cfg)
+		}
+		if !cfg.FinishTime.IsZero() {
+			t = cfg.FinishTime.UnixNano()
+		}
+		if cfg.Error != nil {
+			s.Lock()
+			s.setTagError(cfg.Error, &errorConfig{
+				noDebugStack: cfg.NoDebugStack,
+				stackFrames:  cfg.StackFrames,
+				stackSkip:    cfg.SkipStackFrames,
+			})
+			s.Unlock()
+		}
 	}
 	if s.taskEnd != nil {
 		s.taskEnd()
@@ -337,9 +349,45 @@ func (s *span) String() string {
 	return strings.Join(lines, "\n")
 }
 
+// Format implements fmt.Formatter.
+func (s *span) Format(f fmt.State, c rune) {
+	switch c {
+	case 's':
+		fmt.Fprint(f, s.String())
+	case 'v':
+		if svc := globalconfig.ServiceName(); svc != "" {
+			fmt.Fprintf(f, "dd.service=%s ", svc)
+		}
+		if tr, ok := internal.GetGlobalTracer().(*tracer); ok {
+			if tr.config.env != "" {
+				fmt.Fprintf(f, "dd.env=%s ", tr.config.env)
+			}
+			if tr.config.version != "" {
+				fmt.Fprintf(f, "dd.version=%s ", tr.config.version)
+			}
+		} else {
+			if env := os.Getenv("DD_ENV"); env != "" {
+				fmt.Fprintf(f, "dd.env=%s ", env)
+			}
+			if v := os.Getenv("DD_VERSION"); v != "" {
+				fmt.Fprintf(f, "dd.version=%s ", v)
+			}
+		}
+		fmt.Fprintf(f, `dd.trace_id="%d" dd.span_id="%d"`, s.TraceID, s.SpanID)
+	default:
+		fmt.Fprintf(f, "%%!%c(ddtrace.Span=%v)", c, s)
+	}
+}
+
 const (
-	keySamplingPriority     = "_sampling_priority_v1"
-	keySamplingPriorityRate = "_sampling_priority_rate_v1"
-	keyOrigin               = "_dd.origin"
-	keyHostname             = "_dd.hostname"
+	keySamplingPriority        = "_sampling_priority_v1"
+	keySamplingPriorityRate    = "_dd.agent_psr"
+	keyOrigin                  = "_dd.origin"
+	keyHostname                = "_dd.hostname"
+	keyRulesSamplerAppliedRate = "_dd.rule_psr"
+	keyRulesSamplerLimiterRate = "_dd.limit_psr"
+	keyMeasured                = "_dd.measured"
+	// keyTopLevel is the key of top level metric indicating if a span is top level.
+	// A top level span is a local root (parent span of the local trace) or the first span of each service.
+	keyTopLevel = "_dd.top_level"
 )

@@ -30,6 +30,7 @@ const (
 	tlsCertid                  = "tls/cert"
 	tlsKeyid                   = "tls/key"
 	dbURIid                    = "db/uri"
+	furan2apikey               = "furan2/api_key"
 )
 
 type SecretFetcher interface {
@@ -195,6 +196,13 @@ func (psf *PVCSecretsFetcher) PopulateServer(srv *config.ServerConfig) error {
 			return errors.Wrap(err, "error parsing TLS cert/key")
 		}
 		srv.TLSCert = cert
+	}
+	if srv.EnableFuran2 {
+		s, err = psf.sc.Get(furan2apikey)
+		if err != nil {
+			return errors.Wrap(err, "error getting Furan 2 API key")
+		}
+		srv.Furan2APIKey = string(s)
 	}
 	return nil
 }

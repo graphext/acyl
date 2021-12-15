@@ -86,6 +86,7 @@ type RepoRevisionData struct {
 // QAEnvironment describes an individual QA environment
 // Fields prefixed with "Raw" are directly out of the database without processing
 type QAEnvironment struct {
+	ID                       int64                `json:"id"`
 	Name                     string               `json:"name"`
 	Created                  time.Time            `json:"created"`
 	CreatedDate              string               `json:"created_date"`
@@ -118,13 +119,17 @@ type QAEnvironment struct {
 
 // Columns returns a comma-separated string of column names suitable for a SELECT
 func (qae QAEnvironment) Columns() string {
+	return "id, name, created, raw_events, hostname, qa_type, username, repo, pull_request, source_sha, base_sha, source_branch, base_branch, source_ref, status, ref_map, commit_sha_map, amino_service_to_port, amino_kubernetes_namespace, amino_environment_id"
+}
+
+func (qae QAEnvironment) InsertColumns() string {
 	return "name, created, raw_events, hostname, qa_type, username, repo, pull_request, source_sha, base_sha, source_branch, base_branch, source_ref, status, ref_map, commit_sha_map, amino_service_to_port, amino_kubernetes_namespace, amino_environment_id"
 }
 
 // InsertParams returns the query placeholder params for a full model insert
 func (qae QAEnvironment) InsertParams() string {
 	params := []string{}
-	for i := range strings.Split(qae.Columns(), ", ") {
+	for i := range strings.Split(qae.InsertColumns(), ", ") {
 		params = append(params, fmt.Sprintf("$%v", i+1))
 	}
 	return strings.Join(params, ", ")
@@ -132,6 +137,10 @@ func (qae QAEnvironment) InsertParams() string {
 
 // ScanValues returns a slice of values suitable for a query Scan()
 func (qae *QAEnvironment) ScanValues() []interface{} {
+	return []interface{}{&qae.ID, &qae.Name, &qae.Created, pq.Array(&qae.RawEvents), &qae.Hostname, &qae.QAType, &qae.User, &qae.Repo, &qae.PullRequest, &qae.SourceSHA, &qae.BaseSHA, &qae.SourceBranch, &qae.BaseBranch, &qae.SourceRef, &qae.Status, qae.RefMapHStore(), qae.CommitSHAMapHStore(), qae.AminoServiceToPortHStore(), &qae.AminoKubernetesNamespace, &qae.AminoEnvironmentID}
+}
+
+func (qae *QAEnvironment) InsertValues() []interface{} {
 	return []interface{}{&qae.Name, &qae.Created, pq.Array(&qae.RawEvents), &qae.Hostname, &qae.QAType, &qae.User, &qae.Repo, &qae.PullRequest, &qae.SourceSHA, &qae.BaseSHA, &qae.SourceBranch, &qae.BaseBranch, &qae.SourceRef, &qae.Status, qae.RefMapHStore(), qae.CommitSHAMapHStore(), qae.AminoServiceToPortHStore(), &qae.AminoKubernetesNamespace, &qae.AminoEnvironmentID}
 }
 

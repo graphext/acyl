@@ -1,7 +1,7 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016 Datadog, Inc.
 
 // Package mux provides tracing functions for tracing the gorilla/mux package (https://github.com/gorilla/mux).
 package mux // import "gopkg.in/DataDog/dd-trace-go.v1/contrib/gorilla/mux"
@@ -14,6 +14,7 @@ import (
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+	"gopkg.in/DataDog/dd-trace-go.v1/internal/log"
 
 	"github.com/gorilla/mux"
 )
@@ -82,6 +83,8 @@ func NewRouter(opts ...RouterOption) *Router {
 	if !math.IsNaN(cfg.analyticsRate) {
 		cfg.spanOpts = append(cfg.spanOpts, tracer.Tag(ext.EventSampleRate, cfg.analyticsRate))
 	}
+	cfg.spanOpts = append(cfg.spanOpts, tracer.Measured())
+	log.Debug("contrib/gorilla/mux: Configuring Router: %#v", cfg)
 	return &Router{
 		Router: mux.NewRouter(),
 		config: cfg,
@@ -93,21 +96,34 @@ func NewRouter(opts ...RouterOption) *Router {
 // We only need to rewrite this function to be able to trace
 // all the incoming requests to the underlying multiplexer
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if r.config.ignoreRequest(req) {
+		r.Router.ServeHTTP(w, req)
+		return
+	}
 	var (
 		match    mux.RouteMatch
 		spanopts []ddtrace.StartSpanOption
-		route    = "unknown"
 	)
 	// get the resource associated to this request
 	if r.Match(req, &match) && match.Route != nil {
-		if r, err := match.Route.GetPathTemplate(); err == nil {
-			route = r
-		}
 		if h, err := match.Route.GetHostTemplate(); err == nil {
 			spanopts = append(spanopts, tracer.Tag("mux.host", h))
 		}
 	}
 	spanopts = append(spanopts, r.config.spanOpts...)
-	resource := req.Method + " " + route
-	httputil.TraceAndServe(r.Router, w, req, r.config.serviceName, resource, spanopts...)
+	resource := r.config.resourceNamer(r, req)
+	httputil.TraceAndServe(r.Router, w, req, r.config.serviceName, resource, r.config.finishOpts, spanopts...)
+}
+
+// defaultResourceNamer attempts to quantize the resource for an HTTP request by
+// retrieving the path template associated with the route from the request.
+func defaultResourceNamer(router *Router, req *http.Request) string {
+	var match mux.RouteMatch
+	// get the resource associated with the given request
+	if router.Match(req, &match) && match.Route != nil {
+		if r, err := match.Route.GetPathTemplate(); err == nil {
+			return req.Method + " " + r
+		}
+	}
+	return req.Method + " unknown"
 }

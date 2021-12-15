@@ -1,7 +1,7 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016 Datadog, Inc.
 
 package tracer
 
@@ -32,9 +32,10 @@ type spanContext struct {
 	traceID uint64
 	spanID  uint64
 
-	mu      sync.RWMutex // guards below fields
-	baggage map[string]string
-	origin  string // e.g. "synthetics"
+	mu         sync.RWMutex // guards below fields
+	baggage    map[string]string
+	hasBaggage int32  // atomic int for quick checking presence of baggage. 0 indicates no baggage, otherwise baggage exists.
+	origin     string // e.g. "synthetics"
 }
 
 // newSpanContext creates a new SpanContext to serve as context for the given
@@ -77,6 +78,9 @@ func (c *spanContext) TraceID() uint64 { return c.traceID }
 
 // ForeachBaggageItem implements ddtrace.SpanContext.
 func (c *spanContext) ForeachBaggageItem(handler func(k, v string) bool) {
+	if atomic.LoadInt32(&c.hasBaggage) == 0 {
+		return
+	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	for k, v := range c.baggage {
@@ -93,27 +97,27 @@ func (c *spanContext) setSamplingPriority(p int) {
 	c.trace.setSamplingPriority(float64(p))
 }
 
-func (c *spanContext) samplingPriority() int {
+func (c *spanContext) samplingPriority() (p int, ok bool) {
 	if c.trace == nil {
-		return 0
+		return 0, false
 	}
 	return c.trace.samplingPriority()
-}
-
-func (c *spanContext) hasSamplingPriority() bool {
-	return c.trace != nil && c.trace.hasSamplingPriority()
 }
 
 func (c *spanContext) setBaggageItem(key, val string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.baggage == nil {
+		atomic.StoreInt32(&c.hasBaggage, 1)
 		c.baggage = make(map[string]string, 1)
 	}
 	c.baggage[key] = val
 }
 
 func (c *spanContext) baggageItem(key string) string {
+	if atomic.LoadInt32(&c.hasBaggage) == 0 {
+		return ""
+	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.baggage[key]
@@ -158,19 +162,13 @@ func newTrace() *trace {
 	return &trace{spans: make([]*span, 0, traceStartSize)}
 }
 
-func (t *trace) hasSamplingPriority() bool {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.priority != nil
-}
-
-func (t *trace) samplingPriority() int {
+func (t *trace) samplingPriority() (p int, ok bool) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	if t.priority == nil {
-		return 0
+		return 0, false
 	}
-	return int(*t.priority)
+	return int(*t.priority), true
 }
 
 func (t *trace) setSamplingPriority(p float64) {

@@ -1,7 +1,7 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016 Datadog, Inc.
 
 package httputil // import "gopkg.in/DataDog/dd-trace-go.v1/contrib/internal/httputil"
 
@@ -18,7 +18,8 @@ import (
 )
 
 // TraceAndServe will apply tracing to the given http.Handler using the passed tracer under the given service and resource.
-func TraceAndServe(h http.Handler, w http.ResponseWriter, r *http.Request, service, resource string, spanopts ...ddtrace.StartSpanOption) {
+func TraceAndServe(h http.Handler, w http.ResponseWriter, r *http.Request, service, resource string,
+	finishopts []ddtrace.FinishOption, spanopts ...ddtrace.StartSpanOption) {
 	opts := append([]ddtrace.StartSpanOption{
 		tracer.SpanType(ext.SpanTypeWeb),
 		tracer.ServiceName(service),
@@ -26,11 +27,16 @@ func TraceAndServe(h http.Handler, w http.ResponseWriter, r *http.Request, servi
 		tracer.Tag(ext.HTTPMethod, r.Method),
 		tracer.Tag(ext.HTTPURL, r.URL.Path),
 	}, spanopts...)
+	if r.URL.Host != "" {
+		opts = append([]ddtrace.StartSpanOption{
+			tracer.Tag("http.host", r.URL.Host),
+		}, opts...)
+	}
 	if spanctx, err := tracer.Extract(tracer.HTTPHeadersCarrier(r.Header)); err == nil {
 		opts = append(opts, tracer.ChildOf(spanctx))
 	}
 	span, ctx := tracer.StartSpanFromContext(r.Context(), "http.request", opts...)
-	defer span.Finish()
+	defer span.Finish(finishopts...)
 
 	w = wrapResponseWriter(w, span)
 
@@ -62,6 +68,9 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 // WriteHeader sends an HTTP response header with status code.
 // It also sets the status code to the span.
 func (w *responseWriter) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
 	w.ResponseWriter.WriteHeader(status)
 	w.status = status
 	w.span.SetTag(ext.HTTPCode, strconv.Itoa(status))

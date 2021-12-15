@@ -105,3 +105,14 @@ func (frc *FakeRepoClient) GetRepoArchive(ctx context.Context, repo, ref string)
 	}
 	return "foo.tar.gz", nil
 }
+
+type FakeRepoAppClient struct {
+	GetInstallationTokenForRepoFunc func(ctx context.Context, instID int64, reponame string) (string, error)
+}
+
+func (fra *FakeRepoAppClient) GetInstallationTokenForRepo(ctx context.Context, instID int64, reponame string) (string, error) {
+	if fra.GetInstallationTokenForRepoFunc != nil {
+		return fra.GetInstallationTokenForRepoFunc(ctx, instID, reponame)
+	}
+	return "asdf", nil
+}

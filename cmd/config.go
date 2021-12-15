@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/lint/support"
+	"sigs.k8s.io/kustomize/kyaml/yaml"
 
 	"github.com/dollarshaveclub/acyl/pkg/persistence"
-
-	"k8s.io/helm/pkg/lint"
-	"k8s.io/helm/pkg/lint/support"
 
 	"github.com/rivo/tview"
 
@@ -434,18 +434,22 @@ func displayInfoTerminal(rc *models.RepoConfig, err error, mg meta.Getter) int {
 			return "UNKNOWN", "cyan"
 		}
 
+		vos := make(map[string]interface{})
+		yaml.Unmarshal(mc.ValueOverrides, &vos) // if error, empty value overrides
+
 		log.SetOutput(ioutil.Discard)
-		l := lint.All(mc.Location, mc.ValueOverrides, "nitro-12345-some-name", true)
+		l := action.NewLint()
+		l.Strict = true
+		l.Namespace = "nitro-12345-some-name"
+		lr := l.Run([]string{mc.Location}, vos)
 		if verbose {
 			log.SetOutput(os.Stderr)
 		}
 
-		fmt.Fprintf(chartlinttxt, "[::b]Lint Messages:[::-] %v\n", len(l.Messages))
-		s, c := severityString(l.HighestSeverity)
-		fmt.Fprintf(chartlinttxt, "[::b]Highest Severity:[::-] [%v::]%v[-::]\n\n", c, s)
+		fmt.Fprintf(chartlinttxt, "[::b]Lint Messages:[::-] %v\n", len(lr.Messages))
 		fmt.Fprintf(chartlinttxt, "[::u]Messages:[::-]\n\n")
-		for _, m := range l.Messages {
-			s, c = severityString(m.Severity)
+		for _, m := range lr.Messages {
+			s, c := severityString(m.Severity)
 			fmt.Fprintf(chartlinttxt, "Severity: [%v::b]%v[-::-]\n", c, s)
 			fmt.Fprintf(chartlinttxt, "Path: %v\n", m.Path)
 			fmt.Fprintf(chartlinttxt, "Message: [::b]%v[::-]\n\n", m.Err)

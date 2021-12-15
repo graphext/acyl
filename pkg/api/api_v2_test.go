@@ -34,7 +34,7 @@ func TestAPIv2SearchByTrackingRef(t *testing.T) {
 	}
 	defer tdl.TearDown()
 
-	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	sc := config.ServerConfig{APIKeys: []string{"foo", "bar", "baz"}}
 	apiv2, err := newV2API(dl, nil, nil, sc, OAuthConfig{}, testlogger, nil)
 	if err != nil {
 		t.Fatalf("error creating api: %v", err)
@@ -78,7 +78,7 @@ func TestAPIv2SearchByTrackingRefUserAPIKey(t *testing.T) {
 	}
 	defer tdl.TearDown()
 
-	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	sc := config.ServerConfig{APIKeys: []string{"foo", "bar", "baz"}}
 	apiv2, err := newV2API(dl, nil, nil, sc, OAuthConfig{}, testlogger, nil)
 	if err != nil {
 		t.Fatalf("error creating api: %v", err)
@@ -128,7 +128,7 @@ func TestAPIv2SearchByTrackingRefUserAPIKeyEmpty(t *testing.T) {
 	}
 	defer tdl.TearDown()
 
-	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	sc := config.ServerConfig{APIKeys: []string{"foo", "bar", "baz"}}
 	apiv2, err := newV2API(dl, nil, nil, sc, OAuthConfig{}, testlogger, nil)
 	if err != nil {
 		t.Fatalf("error creating api: %v", err)
@@ -174,7 +174,7 @@ func TestAPIv2EnvDetails(t *testing.T) {
 	}
 	defer tdl.TearDown()
 
-	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	sc := config.ServerConfig{APIKeys: []string{"foo", "bar", "baz"}}
 	apiv2, err := newV2API(dl, nil, nil, sc, OAuthConfig{}, testlogger, nil)
 	if err != nil {
 		t.Fatalf("error creating api: %v", err)
@@ -216,7 +216,7 @@ func TestAPIv2EnvDetailsUserAPIKey(t *testing.T) {
 	}
 	defer tdl.TearDown()
 
-	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	sc := config.ServerConfig{APIKeys: []string{"foo", "bar", "baz"}}
 	apiv2, err := newV2API(dl, nil, nil, sc, OAuthConfig{}, testlogger, nil)
 	if err != nil {
 		t.Fatalf("error creating api: %v", err)
@@ -262,7 +262,7 @@ func TestAPIv2EnvDetailsUserAPIKeyForbidden(t *testing.T) {
 	}
 	defer tdl.TearDown()
 
-	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	sc := config.ServerConfig{APIKeys: []string{"foo", "bar", "baz"}}
 	apiv2, err := newV2API(dl, nil, nil, sc, OAuthConfig{}, testlogger, nil)
 	if err != nil {
 		t.Fatalf("error creating api: %v", err)
@@ -300,7 +300,7 @@ func TestAPIv2EnvDetailsUserAPIKeyUnauthorized(t *testing.T) {
 	}
 	defer tdl.TearDown()
 
-	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	sc := config.ServerConfig{APIKeys: []string{"foo", "bar", "baz"}}
 	apiv2, err := newV2API(dl, nil, nil, sc, OAuthConfig{}, testlogger, nil)
 	if err != nil {
 		t.Fatalf("error creating api: %v", err)
@@ -382,7 +382,7 @@ func TestAPIv2EventLog(t *testing.T) {
 	}
 	defer tdl.TearDown()
 
-	sc := config.ServerConfig{APIKeys: []string{"foo","bar","baz"}}
+	sc := config.ServerConfig{APIKeys: []string{"foo", "bar", "baz"}}
 	apiv2, err := newV2API(dl, nil, nil, sc, OAuthConfig{}, testlogger, nil)
 	if err != nil {
 		t.Fatalf("error creating api: %v", err)
@@ -518,7 +518,7 @@ func TestAPIv2UserEnvs(t *testing.T) {
 	}
 	defer tdl.TearDown()
 
-	apiv2, err := newV2API(dl, nil, nil, config.ServerConfig{APIKeys: []string{"foo"}}, OAuthConfig{}, testlogger, nil)
+	apiv2, err := newV2API(dl, nil, nil, config.ServerConfig{APIKeys: []string{"foo"}}, OAuthConfig{Enforce: true}, testlogger, nil)
 	if err != nil {
 		t.Fatalf("error creating api: %v", err)
 	}

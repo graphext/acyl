@@ -13,7 +13,7 @@ const (
 var token = os.Getenv("GITHUB_TOKEN")
 
 func TestGetDirectoryContents(t *testing.T) {
-	if token == "" {
+	if token == "" || os.Getenv("CIRCLECI") == "true" {
 		t.Skip()
 	}
 	ghc := NewGitHubClient(token)

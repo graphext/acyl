@@ -3,7 +3,9 @@ package ghapp
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/dollarshaveclub/acyl/pkg/models"
 
@@ -61,10 +63,18 @@ func NewGitHubApp(privateKeyPEM []byte, appID uint, webhookSecret string, suppor
 	c := githubapp.Config{}
 	c.V3APIURL = GitHubV3APIURL
 	c.V4APIURL = GitHubV4APIURL
-	c.App.IntegrationID = int(appID)
+	c.App.IntegrationID = int64(appID)
 	c.App.PrivateKey = string(privateKeyPEM)
 	c.App.WebhookSecret = webhookSecret
-	cc, err := githubapp.NewDefaultCachingClientCreator(c)
+	tr := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 60 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout: 60 * time.Second,
+	}
+	cc, err := githubapp.NewDefaultCachingClientCreator(c,
+		githubapp.WithClientTimeout(60*time.Second),
+		githubapp.WithTransport(tr))
 	if err != nil {
 		return nil, errors.Wrap(err, "error initializing github app default client")
 	}

@@ -1,11 +1,10 @@
-FROM golang:1.16-alpine
+FROM golang:1.17-alpine
 
 COPY . /go/src/github.com/dollarshaveclub/acyl
 RUN cd /go/src/github.com/dollarshaveclub/acyl && \
-go mod vendor && \
 CGO_ENABLED=0 go install github.com/dollarshaveclub/acyl
 
-FROM alpine:3.11
+FROM alpine:3.13
 
 RUN mkdir -p /go/bin/ /opt/integration /opt/html /opt/migrations && \
 apk --no-cache add ca-certificates && apk --no-cache upgrade

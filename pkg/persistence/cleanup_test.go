@@ -84,9 +84,18 @@ func TestCleanupPruneEventLogs(t *testing.T) {
 
 	c := Cleaner{DB: tdl.pgdb, LogFunc: t.Logf}
 	uuid1, uuid2 := uuid.Must(uuid.NewRandom()), uuid.Must(uuid.NewRandom())
-	dl.CreateEventLog(&models.EventLog{ID: uuid1})
+
+	ctx := context.Background()
+	if err := dl.CreateQAEnvironment(ctx, &models.QAEnvironment{Name: "foo-bar"}); err != nil {
+		t.Fatalf("error creating qa env: %v", err)
+	}
+	if err := dl.CreateEventLog(&models.EventLog{ID: uuid1, EnvName: "foo-bar"}); err != nil {
+		t.Fatalf("error creating event log 1: %v", err)
+	}
 	time.Sleep(2 * expires)
-	dl.CreateEventLog(&models.EventLog{ID: uuid2})
+	if err := dl.CreateEventLog(&models.EventLog{ID: uuid2, EnvName: "foo-bar"}); err != nil {
+		t.Fatalf("error creating event log 2: %v", err)
+	}
 	tdl.pgdb.Exec(`UPDATE event_logs SET created = $1 WHERE id = $2;`, time.Now().UTC().Add(-1*time.Hour), uuid1)
 	tdl.pgdb.Exec(`UPDATE event_logs SET created = $1 WHERE id = $2;`, time.Now().UTC().Add(1*time.Hour), uuid2)
 	if err := c.PruneEventLogs(expires); err != nil {

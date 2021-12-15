@@ -1,7 +1,7 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016 Datadog, Inc.
 
 package sql
 
@@ -26,7 +26,7 @@ type tracedStmt struct {
 func (s *tracedStmt) Close() (err error) {
 	start := time.Now()
 	err = s.Stmt.Close()
-	s.tryTrace(s.ctx, "Close", "", start, err)
+	s.tryTrace(s.ctx, queryTypeClose, "", start, err)
 	return err
 }
 
@@ -35,7 +35,7 @@ func (s *tracedStmt) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	start := time.Now()
 	if stmtExecContext, ok := s.Stmt.(driver.StmtExecContext); ok {
 		res, err := stmtExecContext.ExecContext(ctx, args)
-		s.tryTrace(ctx, "Exec", s.query, start, err)
+		s.tryTrace(ctx, queryTypeExec, s.query, start, err)
 		return res, err
 	}
 	dargs, err := namedValueToValue(args)
@@ -48,7 +48,7 @@ func (s *tracedStmt) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	default:
 	}
 	res, err = s.Exec(dargs)
-	s.tryTrace(ctx, "Exec", s.query, start, err)
+	s.tryTrace(ctx, queryTypeExec, s.query, start, err)
 	return res, err
 }
 
@@ -57,7 +57,7 @@ func (s *tracedStmt) QueryContext(ctx context.Context, args []driver.NamedValue)
 	start := time.Now()
 	if stmtQueryContext, ok := s.Stmt.(driver.StmtQueryContext); ok {
 		rows, err := stmtQueryContext.QueryContext(ctx, args)
-		s.tryTrace(ctx, "Query", s.query, start, err)
+		s.tryTrace(ctx, queryTypeQuery, s.query, start, err)
 		return rows, err
 	}
 	dargs, err := namedValueToValue(args)
@@ -70,7 +70,7 @@ func (s *tracedStmt) QueryContext(ctx context.Context, args []driver.NamedValue)
 	default:
 	}
 	rows, err = s.Query(dargs)
-	s.tryTrace(ctx, "Query", s.query, start, err)
+	s.tryTrace(ctx, queryTypeQuery, s.query, start, err)
 	return rows, err
 }
 

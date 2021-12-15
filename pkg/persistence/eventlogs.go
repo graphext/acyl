@@ -53,7 +53,7 @@ func (pg *PGLayer) GetEventLogsByRepoAndPR(repo string, pr uint) ([]models.Event
 	return collectEventLogRows(pg.db.Query(q, repo, pr))
 }
 
-// CreateEventLog creates a new EventLog
+// CreateEventLog creates a new EventLog. If elog.EnvName is an empty string, null will be persisted in the database for that column.
 func (pg *PGLayer) CreateEventLog(elog *models.EventLog) error {
 	if elog.LogKey == uuid.Nil {
 		lk, err := uuid.NewRandom()
@@ -75,6 +75,7 @@ func (pg *PGLayer) AppendToEventLog(id uuid.UUID, msg string) error {
 }
 
 // SetEventLogEnvName sets the env name for an EventLog
+// The name must be valid and exist in qa_environments or the foreign key will cause this method to return an error
 func (pg *PGLayer) SetEventLogEnvName(id uuid.UUID, name string) error {
 	tx, err := pg.db.Begin()
 	if err != nil {

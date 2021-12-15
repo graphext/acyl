@@ -27,6 +27,10 @@ app:
   datadog_tracing_agent_addr: 1.2.3.4:8126
   metrics_tags: ''
   furan_addr: "furan"
+  furan2:
+    enabled: false
+    disable_tls_verification: false
+    addr: "furan2:5000"
   k8s_group_bindings: ""
   k8s_secret_injections: "image-pull-secret=k8s/image_pull_secret"
   k8s_client_disable_http2: true # work around bug in using HTTP2 for k8s client calls

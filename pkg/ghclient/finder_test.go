@@ -55,13 +55,12 @@ func testRepos(t *testing.T) afero.Fs {
 	if err != nil {
 		t.Fatalf("error in mkdir: %v", err)
 	}
-	f, err := afs.Create("repo1/foo/bar.txt")
+	f, err := afs.OpenFile("repo1/foo/bar.txt", os.O_RDWR|os.O_CREATE, 0777)
 	if err != nil {
 		t.Fatalf("error writing file: %v", err)
 	}
 	f.Write([]byte("asdf"))
 	f.Close()
-	afs.Chmod("repo1/foo/bar.txt", os.ModePerm)
 	if _, err := wt.Add("foo/bar.txt"); err != nil {
 		t.Fatalf("error adding changed file: %v", err)
 	}

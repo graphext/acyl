@@ -50,7 +50,7 @@ var _ Builder = &ImageBuilder{}
 
 // ImageBuilder is an object that builds images using imageBuilderBackend
 // it is intended to be a singleton instance shared among multiple concurrent environment
-// creation procedures. Consquently, build IDs contain the name of the environment to avoid collisions
+// creation procedures. Consequently, build IDs contain the name of the environment to avoid collisions
 type ImageBuilder struct {
 	Backend      BuilderBackend
 	BuildTimeout time.Duration

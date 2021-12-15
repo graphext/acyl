@@ -117,6 +117,7 @@ type testEnvConfig struct {
 	k8sCfg                                               config.K8sConfig
 	uiPort                                               int
 	uiAssets                                             string
+	operationTimeout                                     time.Duration
 }
 
 var testEnvCfg testEnvConfig
@@ -131,6 +132,7 @@ func init() {
 	configTestCmd.PersistentFlags().StringVar(&k8sGroupBindingsStr, "k8s-group-bindings", "", "optional k8s RBAC group bindings for the environment namespace (comma-separated) in GROUP1=CLUSTER_ROLE1,GROUP2=CLUSTER_ROLE2 format (ex: users=edit)")
 	configTestCmd.PersistentFlags().StringVar(&k8sSecretsStr, "k8s-secret-injections", "", "optional k8s secret injections (comma-separated) for new environment namespaces (other than image-pull-secret) in SECRET_NAME=VAULT_ID (Vault path using secrets mapping) format. Secret value in Vault must be a JSON-encoded object with two keys: 'data' (map of string to base64-encoded bytes), 'type' (string).")
 	configTestCmd.PersistentFlags().BoolVar(&testEnvCfg.enableUI, "ui", false, "enable UI by opening a browser window with status page")
+	configTestCmd.PersistentFlags().DurationVar(&testEnvCfg.operationTimeout, "operation-timeout", 10*time.Minute, "Operation timeout (ex: 10m)")
 	wd, err := os.Getwd()
 	if err != nil {
 		log.Printf("error getting working directory: %v", err)
@@ -412,6 +414,7 @@ func testConfigSetup(dl persistence.DataLayer) (*nitroenv.Manager, context.Conte
 			FS:                   fs,
 			MG:                   mg,
 			CI:                   ci,
+			OperationTimeout:     testEnvCfg.operationTimeout,
 		}, ctx, &models.RepoRevisionData{
 			PullRequest:  testEnvCfg.pullRequest,
 			Repo:         ri.GitHubRepoName,

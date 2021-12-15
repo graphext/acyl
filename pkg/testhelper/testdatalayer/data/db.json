@@ -1,5 +1,6 @@
 [
   {
+    "id": 1,
     "name": "foo-bar",
     "created": "2017-04-24T20:11:42.077582996Z",
     "events": [
@@ -36,6 +37,7 @@
     ]
   },
   {
+    "id": 2,
     "name": "foo-bar-2",
     "created": "2017-04-24T20:11:42.077582996Z",
     "events": [
@@ -67,10 +69,12 @@
     "base_sha": "393kdkd9328292k",
     "base_branch": "master",
     "event_ids": [
-      "c1e1e229-86d8-4d99-a3d5-62b2f6390bbe"
+      "c1e1e229-86d8-4d99-a3d5-62b2f6390bbe",
+      "9beb4f55-bc47-4411-b17d-78e2c0bccb26"
     ]
   },
   {
+    "id": 3,
     "name": "foo-baz",
     "created": "2017-04-25T20:11:45.077582996Z",
     "events": [
@@ -104,6 +108,7 @@
     "event_ids": []
   },
   {
+    "id": 4,
     "name": "foo-baz-2",
     "created": "2017-04-25T20:11:45.077582996Z",
     "events": [
@@ -137,6 +142,7 @@
     "event_ids": []
   },
   {
+    "id": 5,
     "name": "biz-baz",
     "created": "2017-04-26T20:11:49.077582996Z",
     "events": [
@@ -170,6 +176,7 @@
     "event_ids": []
   },
   {
+    "id": 6,
     "name": "biz-biz",
     "created": "2017-04-26T20:11:49.077582996Z",
     "events": [
@@ -203,6 +210,7 @@
     "event_ids": []
   },
   {
+    "id": 7,
     "name": "biz-biz2",
     "created": "2017-04-26T20:11:49.077582996Z",
     "events": [

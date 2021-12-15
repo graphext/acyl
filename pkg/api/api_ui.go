@@ -34,7 +34,7 @@ import (
 
 type uiBranding struct {
 	config.UIBrandingConfig
-	FaviconType  string
+	FaviconType string
 }
 
 // OAuthConfig models the configuration needed to support a GitHub OAuth authn/authz flow
@@ -423,7 +423,13 @@ func (ui *uiapi) authenticate(f http.HandlerFunc) http.HandlerFunc {
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !ui.oauth.Enforce {
-			f(w, r)
+			// create a dummy session for this request
+			ui.rlogger(r).Logf("dummy session user set: %v, setting session to authenticated", ui.oauth.DummySessionUser)
+			uis := models.UISession{}
+			uis.EncryptandSetUserToken([]byte(`dummy token`), ui.oauth.UserTokenEncKey)
+			uis.Authenticated = true
+			uis.GitHubUser = ui.oauth.DummySessionUser
+			f(w, r.Clone(withSession(r.Context(), uis)))
 			return
 		}
 		redirectToAuth := func(s *sessions.Session) {
@@ -742,7 +748,7 @@ func (api *uiapi) envHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	repos, err := userPermissionsClient(api.oauth).GetUserVisibleRepos(r.Context(), uis)
+	repos, err := userPermissionsClient(api.oauth, env.Repo).GetUserVisibleRepos(r.Context(), uis)
 	if err != nil {
 		api.rlogger(r).Logf("error getting user visible repos: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -753,7 +759,7 @@ func (api *uiapi) envHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusFound)
 		return
 	}
-	reposWritable, err := userPermissionsClient(api.oauth).GetUserWritableRepos(r.Context(), uis)
+	reposWritable, err := userPermissionsClient(api.oauth, env.Repo).GetUserWritableRepos(r.Context(), uis)
 	if err != nil {
 		api.rlogger(r).Logf("error getting user writable repos: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)

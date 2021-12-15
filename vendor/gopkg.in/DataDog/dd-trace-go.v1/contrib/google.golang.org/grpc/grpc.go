@@ -1,7 +1,7 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2019 Datadog, Inc.
+// Copyright 2016 Datadog, Inc.
 
 //go:generate protoc -I . fixtures_test.proto --go_out=plugins=grpc:.
 
@@ -10,7 +10,6 @@ package grpc // import "gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.or
 
 import (
 	"io"
-	"math"
 
 	"gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/internal/grpcutil"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace"
@@ -24,17 +23,14 @@ import (
 )
 
 func startSpanFromContext(
-	ctx context.Context, method, operation, service string, rate float64,
+	ctx context.Context, method, operation, service string, opts ...tracer.StartSpanOption,
 ) (ddtrace.Span, context.Context) {
-	opts := []ddtrace.StartSpanOption{
+	opts = append(opts,
 		tracer.ServiceName(service),
 		tracer.ResourceName(method),
 		tracer.Tag(tagMethodName, method),
 		tracer.SpanType(ext.AppTypeRPC),
-	}
-	if !math.IsNaN(rate) {
-		opts = append(opts, tracer.Tag(ext.EventSampleRate, rate))
-	}
+	)
 	md, _ := metadata.FromIncomingContext(ctx) // nil is ok
 	if sctx, err := tracer.Extract(grpcutil.MDCarrier(md)); err == nil {
 		opts = append(opts, tracer.ChildOf(sctx))
