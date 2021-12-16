@@ -40,7 +40,7 @@ dependencies:
       default_branch: master
       value_overrides:
         - "image.repository=eu.gcr.io/graphext-development/furan2"
-        - 'app.builder_image='
+        - "image.tag=8a489383e70477ca6439365f35ae140c23a883f3"
     - chart_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql'
       chart_vars_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql/values.yaml'
       value_overrides:
