@@ -37,7 +37,7 @@ dependencies:
   direct:
     - repo: graphext/furan
       name: furan
-      default_branch: furan2-update
+      default_branch: master
       value_overrides:
         - "image.repository=eu.gcr.io/graphext-development/furan2"
         - "image.tag=8a489383e70477ca6439365f35ae140c23a883f3"
