@@ -13,7 +13,7 @@ metadata:
 
 spec:
   rules:
-    - host: {{ .Values.env_name }}-{{ .Values.ingress.argo_host }}
+    - host: {{ .Values.ingress.argo_host }}
       http:
         paths:
           - path: /
