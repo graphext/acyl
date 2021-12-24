@@ -4,7 +4,9 @@ package client
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 
 	"github.com/gofrs/uuid"
 	"google.golang.org/grpc"
@@ -13,6 +15,8 @@ import (
 	"github.com/dollarshaveclub/furan/v2/pkg/generated/furanrpc"
 	fgrpc "github.com/dollarshaveclub/furan/v2/pkg/grpc"
 )
+
+const DefaultCAPath string = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 
 type rpcCreds struct {
 	apilabel, apikey string
@@ -45,10 +49,23 @@ func New(opts Options) (*RemoteBuilder, error) {
 		apilabel: fgrpc.APIKeyLabel,
 		apikey:   opts.APIKey,
 	}
+	t := tls.Config{InsecureSkipVerify: opts.TLSInsecureSkipVerify}
+	if !opts.TLSInsecureSkipVerify {
+		caCert, err := ioutil.ReadFile(DefaultCAPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read ca-path %s : %q", DefaultCAPath, err)
+		}
+		caCertPool := x509.NewCertPool()
+		successful := caCertPool.AppendCertsFromPEM(caCert)
+		if !successful {
+			return nil, fmt.Errorf("failed to parse ca certificate as PEM encoded content")
+		}
+		t.RootCAs = caCertPool
+	}
 	conn, err := grpc.Dial(
 		opts.Address,
 		grpc.WithPerRPCCredentials(rc),
-		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: opts.TLSInsecureSkipVerify})),
+		grpc.WithTransportCredentials(credentials.NewTLS(&t)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error connecting to grpc server: %w", err)

@@ -25,7 +25,7 @@ app:
   datadog_service_name: acyl
   dogstatsd_addr: 1.2.3.4:8125
   datadog_tracing_agent_addr: 1.2.3.4:8126
-  metrics_tags: ''
+  metrics_tags: 'local:acyl'
   furan_addr: "furan"
   furan2:
     enabled: false
@@ -77,7 +77,7 @@ ingress:
   annotations:
      kubernetes.io/ingress.class: foo
   hosts:
-    - foo.bar 
+    - foo.bar
   argo: true
   argo_host: foo.bar.com
   traefik:

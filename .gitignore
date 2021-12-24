@@ -2,3 +2,4 @@
 .idea/
 .vscode/
 /testing/localsecrets/localsecrets
+/testing/localsecrets/pg_localsecrets

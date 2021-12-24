@@ -25,6 +25,10 @@ const (
 	K8sVaultAuth                                // Kubernetes
 )
 
+const (
+	DefaultVaultCAPath string = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+)
+
 type vaultBackendGetter struct {
 	vc     vaultIO
 	mapper SecretMapper
@@ -103,7 +107,9 @@ var getVaultClient vaultClientFactory = newVaultClient
 // newVaultClient returns a vaultClient object or error
 func newVaultClient(config *vaultBackend) (vaultIO, error) {
 	vc := vaultClient{}
-	c, err := api.NewClient(&api.Config{Address: config.host})
+	client_config := &api.Config{Address: config.host}
+	client_config.ConfigureTLS(&api.TLSConfig{CAPath: DefaultVaultCAPath})
+	c, err := api.NewClient(client_config)
 	vc.client = c
 	vc.config = config
 	return &vc, err
@@ -196,10 +202,12 @@ func (c *vaultClient) getValue(path string) (interface{}, error) {
 	if c.config.valuekey != "" {
 		key = c.config.valuekey
 	}
-	if _, ok := s.Data[key]; !ok {
+
+	data, ok := s.Data["data"].(map[string]interface{})
+	if !ok {
 		return nil, fmt.Errorf("secret missing value key: %v", key)
 	}
-	return s.Data[key], nil
+	return data[key], nil
 }
 
 // GetValue retrieves a value

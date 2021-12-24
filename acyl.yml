@@ -9,30 +9,25 @@ application:
   chart_vars_path: '.helm/charts/acyl/values.yaml'
   image: eu.gcr.io/graphext-development/acyl
   value_overrides:
+  - "run_migrations=true"
+  - "create_cluster_role_binding=true"
   - "ingress.traefik.enabled=false"
   - "ingress.argo_host=acyl.testing.graphext.com"
   - "image.pullPolicy=IfNotPresent"
   - "app.ui.enforce_oauth=true"
-  - "app.dogstatsd_addr=1.2.3.4:8125"
-  - "app.secrets_backend=env"
-  - "app.secrets_mapping=ACYL_{{ .ID }}"
-  - "app.secrets_from_env=true"
-  - "app.k8s_secret_injections="
+  - "app.secrets_backend=vault"
+  - "app.secrets_mapping=secret/data/acyl/{{ .ID }}"
   - "app.operation_timeout_override=30m"
-  - "app.k8s_secret_injections=image-pull-secret=K8S_IMAGE_PULL_SECRET"
   - "app.ui.base_url=https://acyl.testing.graphext.com"
-  - "app.metrics_tags=local:acyl"
-  - "cronautoscaling.enabled=false"
   - "serviceaccount=nitro"
   - "replicaCount=1"
-  - "image.tag=a3b4a551a72d4b229934735130140a8c49fd245f"
+  - "image.tag=latest"
   - "image.repository=eu.gcr.io/graphext-development/acyl"
   - "resources.requests.cpu=20m"
   - "resources.requests.memory=100Mi"
   - "app.furan2.enabled=true"
-  - "app.furan2.disable_tls_verification=true"
   - "app.furan2.addr=furan:4000"
-
+  - "vault.addr=https://vault.vault:8200"
 dependencies:
   direct:
     - repo: graphext/furan
@@ -40,16 +35,27 @@ dependencies:
       default_branch: master
       value_overrides:
         - "image.repository=eu.gcr.io/graphext-development/furan2"
-        - "image.tag=8a489383e70477ca6439365f35ae140c23a883f3"
-        - "vault.address=http://graphext-furan-vault:8200"
-    - chart_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql'
-      chart_vars_repo_path: 'kubernetes/charts@9e28c906fc7a8e62e77a0743cd4b3bd38fbba008:stable/postgresql/values.yaml'
+        - "image.tag=latest"
+        - 'createServiceAccount=true'
+        - 'createRole=true'
+        - 'is_dqa=false'
+        - 'run_migrations=true'
+        - 'app.secrets_mapping=secret/data/furan/{{ .ID }}'
+        - 'app.tls.use_dev_cert=false'
+        - 'app.testing_seed_api_key=b9ad35b2-8918-492e-bb18-47c2365b6c86'
+        - 'app.tls.from_secret=furan-tls'
+        - "vault.address=https://vault.vault:8200"
+        - 'vault.use_k8s_auth=true'
+        - 'vault.use_token_auth=false'
+        - 'app.builder_image=moby/buildkit:v0.7.2'
+    - chart_repo_path: 'helm/charts@ee52835ec879e82f46141810b63a09e182c43886:stable/postgresql'
+      chart_vars_repo_path: 'helm/charts@ee52835ec879e82f46141810b63a09e182c43886:stable/postgresql/values.yaml'
       value_overrides:
-        - "image.tag=9.6"
-        - "postgresqlPassword=root"
+        - "image.tag=11"
+        - "existingSecret=postgresql-acyl-secrets"
         - "postgresqlDatabase=acyl"
         - "persistence.enabled=true"
-        - "fullnameOverride=postgresql-postgresql"
+        - "fullnameOverride=postgresql-acyl"
 
 notifications:
   github:
