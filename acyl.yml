@@ -42,7 +42,7 @@ dependencies:
         - 'run_migrations=true'
         - 'app.secrets_mapping=secret/data/furan/{{ .ID }}'
         - 'app.tls.use_dev_cert=false'
-        - 'app.testing_seed_api_key=b9ad35b2-8918-492e-bb18-47c2365b6c86'
+        - 'app.testing_seed_api_key='
         - 'app.tls.from_secret=furan-tls'
         - "vault.address=https://vault.vault:8200"
         - 'vault.use_k8s_auth=true'
