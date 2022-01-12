@@ -3,10 +3,10 @@ package ghclient
 import (
 	"context"
 	"fmt"
+	"github.com/dollarshaveclub/acyl/pkg/eventlogger"
 	"golang.org/x/time/rate"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -85,7 +85,8 @@ func NewGitHubClient(token string) *GitHubClient {
 	return &GitHubClient{
 		c: github.NewClient(tc),
 		rhc: &RateLimitedHTTPClient{
-			rl: rate.NewLimiter(rate.Every(10*time.Second), 10),
+			// Max rate: 2 per second sustained with up to 15 req burst
+			rl: rate.NewLimiter(rate.Every(500*time.Millisecond), 15),
 		},
 	}
 }
@@ -235,9 +236,23 @@ func (ghc *GitHubClient) GetFileContents(ctx context.Context, repo string, path 
 	}
 	ctx, cf := context.WithTimeout(ctx, ghTimeout)
 	defer cf()
-	fc, _, _, err := ghc.getClient(ctx).Repositories.GetContents(ctx, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
+	retries := 3
+	var err error
+	var fc *github.RepositoryContent
+	for i := 0; i < retries; i++ {
+		if err != nil {
+			eventlogger.GetLogger(ctx).Printf("ghclient: GetFileContents: GetContents retry (%v/%v), prev error: %v", i+1, retries, err)
+			time.Sleep(20 * time.Millisecond)
+		}
+		fc, _, _, err = ghc.getClient(ctx).Repositories.GetContents(ctx, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
+		if err != nil {
+			err = errors.Wrap(err, "error getting GitHub repo contents")
+			continue
+		}
+		break
+	}
 	if err != nil {
-		return nil, fmt.Errorf("error getting GitHub repo contents: %v", err)
+		return nil, err
 	}
 	if fc.GetSize() > MaxFileDownloadSizeBytes {
 		return nil, fmt.Errorf("file size exceeds max (%v bytes): %v", MaxFileDownloadSizeBytes, fc.GetSize())
@@ -288,20 +303,34 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 	getDirContents = func(dirpath string) (map[string]FileContents, error) {
 		ctx, cf := context.WithTimeout(ctx, ghTimeout)
 		defer cf()
-		_, dc, _, err := ghc.getClient(ctx).Repositories.GetContents(ctx, rs[0], rs[1], dirpath, &github.RepositoryContentGetOptions{Ref: ref})
+		retries := 3
+		var err error
+		var dc []*github.RepositoryContent
+		for i := 0; i < retries; i++ {
+			if err != nil {
+				eventlogger.GetLogger(ctx).Printf("ghclient: GetDirectoryContents: GetContents retry (%v/%v), prev error: %v", i+1, retries, err)
+				time.Sleep(20 * time.Millisecond)
+			}
+			_, dc, _, err = ghc.getClient(ctx).Repositories.GetContents(ctx, rs[0], rs[1], dirpath, &github.RepositoryContentGetOptions{Ref: ref})
+			if err != nil {
+				err = errors.Wrap(err, "error getting GitHub repo contents")
+				continue
+			}
+			break
+		}
 		if err != nil {
-			return nil, errors.Wrap(err, "error getting GitHub repo contents")
+			return nil, err
 		}
 		if dc == nil {
 			return nil, fmt.Errorf("directory contents is nil, path may not be a directory: %v", path)
 		}
 		output := map[string]FileContents{}
-		retries := 3
 		getFile := func(fc *github.RepositoryContent) error {
 			var err error
 			for i := 0; i < retries; i++ {
 				if err != nil {
-					log.Printf("retrying, previous error: %v", err)
+					eventlogger.GetLogger(ctx).Printf("ghclient: GetDirectoryContents: getFile retry (%v/%v), prev error: %v", i+1, retries, err)
+					time.Sleep(20 * time.Millisecond)
 				}
 				resp, err := ghc.rhc.Get(ctx, fc.GetDownloadURL())
 				if err != nil {

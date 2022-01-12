@@ -10,7 +10,7 @@ import (
 
 const (
 	testingRepo = "dollarshaveclub/acyl"
-	testingPath = "vendor/"
+	testingPath = ".helm/charts/acyl"
 	testingRef  = "master"
 )
 
