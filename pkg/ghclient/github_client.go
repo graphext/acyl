@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	ghTimeout = 2 * time.Minute
+	ghTimeout = 15 * time.Second
 )
 
 // BranchInfo includes the information about a specific branch of a git repo
@@ -234,8 +234,6 @@ func (ghc *GitHubClient) GetFileContents(ctx context.Context, repo string, path 
 	if len(rs) != 2 {
 		return nil, fmt.Errorf("malformed repo: %v", repo)
 	}
-	ctx, cf := context.WithTimeout(ctx, ghTimeout)
-	defer cf()
 	retries := 3
 	var err error
 	var fc *github.RepositoryContent
@@ -244,7 +242,9 @@ func (ghc *GitHubClient) GetFileContents(ctx context.Context, repo string, path 
 			eventlogger.GetLogger(ctx).Printf("ghclient: GetFileContents: GetContents retry (%v/%v), prev error: %v", i+1, retries, err)
 			time.Sleep(20 * time.Millisecond)
 		}
-		fc, _, _, err = ghc.getClient(ctx).Repositories.GetContents(ctx, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
+		ctx2, cf := context.WithTimeout(ctx, ghTimeout)
+		defer cf()
+		fc, _, _, err = ghc.getClient(ctx).Repositories.GetContents(ctx2, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
 		if err != nil {
 			err = errors.Wrap(err, "error getting GitHub repo contents")
 			continue
@@ -301,8 +301,6 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 	// recursively fetch all directories and files
 	var getDirContents func(dirpath string) (map[string]FileContents, error)
 	getDirContents = func(dirpath string) (map[string]FileContents, error) {
-		ctx, cf := context.WithTimeout(ctx, ghTimeout)
-		defer cf()
 		retries := 3
 		var err error
 		var dc []*github.RepositoryContent
@@ -311,7 +309,9 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 				eventlogger.GetLogger(ctx).Printf("ghclient: GetDirectoryContents: GetContents retry (%v/%v), prev error: %v", i+1, retries, err)
 				time.Sleep(20 * time.Millisecond)
 			}
-			_, dc, _, err = ghc.getClient(ctx).Repositories.GetContents(ctx, rs[0], rs[1], dirpath, &github.RepositoryContentGetOptions{Ref: ref})
+			ctx2, cf := context.WithTimeout(ctx, ghTimeout)
+			defer cf()
+			_, dc, _, err = ghc.getClient(ctx).Repositories.GetContents(ctx2, rs[0], rs[1], dirpath, &github.RepositoryContentGetOptions{Ref: ref})
 			if err != nil {
 				err = errors.Wrap(err, "error getting GitHub repo contents")
 				continue
@@ -377,7 +377,7 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 				// if it's a symlink, we have to do another API call to get details
 				ctx2, cf := context.WithTimeout(ctx, ghTimeout)
 				defer cf()
-				fc2, _, _, err := ghc.getClient(ctx2).Repositories.GetContents(ctx, rs[0], rs[1], fc.GetPath(), &github.RepositoryContentGetOptions{Ref: ref})
+				fc2, _, _, err := ghc.getClient(ctx).Repositories.GetContents(ctx2, rs[0], rs[1], fc.GetPath(), &github.RepositoryContentGetOptions{Ref: ref})
 				if err != nil {
 					return nil, errors.Wrap(err, "error getting symlink details")
 				}
