@@ -3,8 +3,10 @@ package ghclient
 import (
 	"context"
 	"fmt"
+	"golang.org/x/time/rate"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -48,10 +50,31 @@ type RepoClient interface {
 	GetRepoArchive(ctx context.Context, repo, ref string) (string, error)
 }
 
+type RateLimitedHTTPClient struct {
+	hc http.Client
+	rl *rate.Limiter
+}
+
+func (c *RateLimitedHTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response, error) {
+	err := c.rl.Wait(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "error waiting on rate limiter")
+	}
+	return c.hc.Do(req)
+}
+
+func (c *RateLimitedHTTPClient) Get(ctx context.Context, url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating http request")
+	}
+	return c.Do(ctx, req)
+}
+
 // GitHubClient is an object that interacts with the GitHub API
 type GitHubClient struct {
-	c  *github.Client
-	hc http.Client
+	c   *github.Client
+	rhc *RateLimitedHTTPClient
 }
 
 // NewGitHubClient returns a GitHubClient instance that authenticates using
@@ -61,6 +84,9 @@ func NewGitHubClient(token string) *GitHubClient {
 	tc := oauth2.NewClient(context.Background(), ts)
 	return &GitHubClient{
 		c: github.NewClient(tc),
+		rhc: &RateLimitedHTTPClient{
+			rl: rate.NewLimiter(rate.Every(10*time.Second), 10),
+		},
 	}
 }
 
@@ -257,7 +283,6 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 	if len(rs) != 2 {
 		return nil, fmt.Errorf("malformed repo: %v", repo)
 	}
-	hc := http.Client{}
 	// recursively fetch all directories and files
 	var getDirContents func(dirpath string) (map[string]FileContents, error)
 	getDirContents = func(dirpath string) (map[string]FileContents, error) {
@@ -271,24 +296,39 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 			return nil, fmt.Errorf("directory contents is nil, path may not be a directory: %v", path)
 		}
 		output := map[string]FileContents{}
+		retries := 3
 		getFile := func(fc *github.RepositoryContent) error {
-			resp, err := hc.Get(fc.GetDownloadURL())
-			if err != nil {
-				return errors.Wrapf(err, "error downloading file: %v", fc.GetPath())
+			var err error
+			for i := 0; i < retries; i++ {
+				if err != nil {
+					log.Printf("retrying, previous error: %v", err)
+				}
+				resp, err := ghc.rhc.Get(ctx, fc.GetDownloadURL())
+				if err != nil {
+					err = errors.Wrapf(err, "error downloading file: %v", fc.GetPath())
+					continue
+				}
+				defer resp.Body.Close()
+				c, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					err = errors.Wrapf(err, "error reading HTTP body for file: %v", fc.GetPath())
+					continue
+				}
+				if resp.StatusCode > 299 || resp.StatusCode < 200 {
+					err = fmt.Errorf("unexpected status code: %v: resp body: %v", resp.StatusCode, string(c))
+					continue
+				}
+				if len(c) != fc.GetSize() {
+					err = fmt.Errorf("unexpected size for %v: %v (wanted %v)", fc.GetPath(), len(c), fc.GetSize())
+					continue
+				}
+				output[fc.GetPath()] = FileContents{
+					Path:     fc.GetPath(),
+					Contents: c,
+				}
+				return nil
 			}
-			defer resp.Body.Close()
-			c, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				return errors.Wrapf(err, "error reading HTTP body for file: %v", fc.GetPath())
-			}
-			if len(c) != fc.GetSize() {
-				return fmt.Errorf("unexpected size for %v: %v (wanted %v)", fc.GetPath(), len(c), fc.GetSize())
-			}
-			output[fc.GetPath()] = FileContents{
-				Path:     fc.GetPath(),
-				Contents: c,
-			}
-			return nil
+			return err
 		}
 		for _, fc := range dc {
 			switch fc.GetType() {
@@ -364,7 +404,7 @@ func (ghc *GitHubClient) GetRepoArchive(ctx context.Context, repo, ref string) (
 			os.Remove(f.Name())
 		}
 	}()
-	resp2, err := ghc.hc.Do(hr)
+	resp2, err := ghc.rhc.Do(ctx, hr)
 	if err != nil {
 		return f.Name(), fmt.Errorf("error performing archive http request: %v", err)
 	}

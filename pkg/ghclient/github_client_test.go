@@ -2,32 +2,39 @@ package ghclient
 
 import (
 	"context"
+	"golang.org/x/sync/errgroup"
 	"os"
+	"strconv"
 	"testing"
 )
 
 const (
 	testingRepo = "dollarshaveclub/acyl"
+	testingPath = "vendor/"
+	testingRef  = "master"
 )
 
 var token = os.Getenv("GITHUB_TOKEN")
+var parallelism = os.Getenv("TEST_PARALLELISM")
 
 func TestGetDirectoryContents(t *testing.T) {
 	if token == "" || os.Getenv("CIRCLECI") == "true" {
 		t.Skip()
 	}
+	pcnt, err := strconv.Atoi(parallelism)
+	if err != nil || pcnt < 1 || pcnt > 1000 {
+		pcnt = 5
+	}
+	t.Logf("running with %v calls in parallel...", pcnt)
 	ghc := NewGitHubClient(token)
-	cm, err := ghc.GetDirectoryContents(context.Background(), testingRepo, "pkg/persistence", "master")
-	if err != nil {
-		t.Fatalf("should have succeeded: %v", err)
+	eg := errgroup.Group{}
+	for i := 0; i < pcnt; i++ {
+		eg.Go(func() error {
+			_, err := ghc.GetDirectoryContents(context.Background(), testingRepo, testingPath, testingRef)
+			return err
+		})
 	}
-	var i int
-	for k, v := range cm {
-		t.Logf("path: %v; size: %v\n", k, len(v.Contents))
-		if v.Symlink {
-			t.Logf("... symlink to: %v", v.SymlinkTarget)
-			i++
-		}
+	if err := eg.Wait(); err != nil {
+		t.Fatalf("failed: %v", err)
 	}
-	t.Logf("symlink count: %v", i)
 }
