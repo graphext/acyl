@@ -307,7 +307,7 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 		for i := 0; i < retries; i++ {
 			if err != nil {
 				eventlogger.GetLogger(ctx).Printf("ghclient: GetDirectoryContents: GetContents retry (%v/%v), prev error: %v", i+1, retries, err)
-				time.Sleep(20 * time.Millisecond)
+				time.Sleep(1 * time.Second)
 			}
 			ctx2, cf := context.WithTimeout(ctx, ghTimeout)
 			defer cf()
@@ -327,24 +327,23 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 		output := map[string]FileContents{}
 		getFile := func(fc *github.RepositoryContent) error {
 			var err error
+			var c []byte
 			for i := 0; i < retries; i++ {
 				if err != nil {
 					eventlogger.GetLogger(ctx).Printf("ghclient: GetDirectoryContents: getFile retry (%v/%v), prev error: %v", i+1, retries, err)
-					time.Sleep(20 * time.Millisecond)
+					time.Sleep(1 * time.Second)
 				}
-				resp, err := ghc.rhc.Get(ctx, fc.GetDownloadURL())
+				ctx2, cf := context.WithTimeout(ctx, ghTimeout)
+				defer cf()
+				cts, _, err := ghc.getClient(ctx).Repositories.DownloadContents(ctx2, rs[0], rs[1], fc.GetPath(), &github.RepositoryContentGetOptions{Ref: ref})
 				if err != nil {
-					err = errors.Wrapf(err, "error downloading file: %v", fc.GetPath())
+					err = errors.Wrap(err, "error downloading contents")
 					continue
 				}
-				defer resp.Body.Close()
-				c, err := ioutil.ReadAll(resp.Body)
+				defer cts.Close()
+				c, err = ioutil.ReadAll(cts)
 				if err != nil {
 					err = errors.Wrapf(err, "error reading HTTP body for file: %v", fc.GetPath())
-					continue
-				}
-				if resp.StatusCode > 299 || resp.StatusCode < 200 {
-					err = fmt.Errorf("unexpected status code: %v: resp body: %v", resp.StatusCode, string(c))
 					continue
 				}
 				if len(c) != fc.GetSize() {
