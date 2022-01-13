@@ -55,6 +55,9 @@ var (
 )
 
 func TestGetDirectoryContentsGithubApp(t *testing.T) {
+	if appIDs == "" || os.Getenv("CIRCLECI") == "true" {
+		t.Skip()
+	}
 	appID, err := strconv.Atoi(appIDs)
 	if err != nil {
 		t.Fatalf("invalid app id: %v", err)
