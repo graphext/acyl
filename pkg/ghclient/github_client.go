@@ -269,7 +269,7 @@ func (ghc *GitHubClient) GetFileContents(ctx context.Context, repo string, path 
 			}
 			return []byte(c), nil
 		}
-		rc, _, err := ghc.getClient(ctx).Repositories.DownloadContents(ctx, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
+		rc, resp, err := ghc.getClient(ctx).Repositories.DownloadContents(ctx, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
 		if err != nil {
 			return nil, errors.Wrap(err, "error downloading file")
 		}
@@ -277,6 +277,9 @@ func (ghc *GitHubClient) GetFileContents(ctx context.Context, repo string, path 
 		c, err := ioutil.ReadAll(rc)
 		if err != nil {
 			return nil, errors.Wrap(err, "error reading file contents")
+		}
+		if resp.StatusCode > 299 || resp.StatusCode < 200 {
+			return nil, fmt.Errorf("unexpected status code downloading file content: %v: %v", resp.StatusCode, string(c))
 		}
 		return c, nil
 	default:
@@ -328,6 +331,8 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 		getFile := func(fc *github.RepositoryContent) error {
 			var err error
 			var c []byte
+			var ghresp *github.Response
+			var cts io.ReadCloser
 			for i := 0; i < retries; i++ {
 				if err != nil {
 					eventlogger.GetLogger(ctx).Printf("ghclient: GetDirectoryContents: getFile retry (%v/%v), prev error: %v", i+1, retries, err)
@@ -335,7 +340,7 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 				}
 				ctx2, cf := context.WithTimeout(ctx, ghTimeout)
 				defer cf()
-				cts, _, err := ghc.getClient(ctx).Repositories.DownloadContents(ctx2, rs[0], rs[1], fc.GetPath(), &github.RepositoryContentGetOptions{Ref: ref})
+				cts, ghresp, err = ghc.getClient(ctx).Repositories.DownloadContents(ctx2, rs[0], rs[1], fc.GetPath(), &github.RepositoryContentGetOptions{Ref: ref})
 				if err != nil {
 					err = errors.Wrap(err, "error downloading contents")
 					continue
@@ -344,6 +349,10 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 				c, err = ioutil.ReadAll(cts)
 				if err != nil {
 					err = errors.Wrapf(err, "error reading HTTP body for file: %v", fc.GetPath())
+					continue
+				}
+				if ghresp.StatusCode > 299 || ghresp.StatusCode < 200 {
+					err = fmt.Errorf("unexpected status code downloading file content: %v: %v", ghresp.StatusCode, string(c))
 					continue
 				}
 				if len(c) != fc.GetSize() {
