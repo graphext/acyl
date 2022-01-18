@@ -3,6 +3,8 @@ package ghclient
 import (
 	"context"
 	"fmt"
+	"github.com/dollarshaveclub/acyl/pkg/eventlogger"
+	"golang.org/x/time/rate"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -18,7 +20,7 @@ import (
 )
 
 const (
-	ghTimeout = 2 * time.Minute
+	ghTimeout = 15 * time.Second
 )
 
 // BranchInfo includes the information about a specific branch of a git repo
@@ -48,10 +50,31 @@ type RepoClient interface {
 	GetRepoArchive(ctx context.Context, repo, ref string) (string, error)
 }
 
+type RateLimitedHTTPClient struct {
+	hc http.Client
+	rl *rate.Limiter
+}
+
+func (c *RateLimitedHTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response, error) {
+	err := c.rl.Wait(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "error waiting on rate limiter")
+	}
+	return c.hc.Do(req)
+}
+
+func (c *RateLimitedHTTPClient) Get(ctx context.Context, url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating http request")
+	}
+	return c.Do(ctx, req)
+}
+
 // GitHubClient is an object that interacts with the GitHub API
 type GitHubClient struct {
-	c  *github.Client
-	hc http.Client
+	c   *github.Client
+	rhc *RateLimitedHTTPClient
 }
 
 // NewGitHubClient returns a GitHubClient instance that authenticates using
@@ -61,6 +84,10 @@ func NewGitHubClient(token string) *GitHubClient {
 	tc := oauth2.NewClient(context.Background(), ts)
 	return &GitHubClient{
 		c: github.NewClient(tc),
+		rhc: &RateLimitedHTTPClient{
+			// Max rate: 2 per second sustained with up to 15 req burst
+			rl: rate.NewLimiter(rate.Every(500*time.Millisecond), 15),
+		},
 	}
 }
 
@@ -207,11 +234,25 @@ func (ghc *GitHubClient) GetFileContents(ctx context.Context, repo string, path 
 	if len(rs) != 2 {
 		return nil, fmt.Errorf("malformed repo: %v", repo)
 	}
-	ctx, cf := context.WithTimeout(ctx, ghTimeout)
-	defer cf()
-	fc, _, _, err := ghc.getClient(ctx).Repositories.GetContents(ctx, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
+	retries := 3
+	var err error
+	var fc *github.RepositoryContent
+	for i := 0; i < retries; i++ {
+		if err != nil {
+			eventlogger.GetLogger(ctx).Printf("ghclient: GetFileContents: GetContents retry (%v/%v), prev error: %v", i+1, retries, err)
+			time.Sleep(20 * time.Millisecond)
+		}
+		ctx2, cf := context.WithTimeout(ctx, ghTimeout)
+		defer cf()
+		fc, _, _, err = ghc.getClient(ctx).Repositories.GetContents(ctx2, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
+		if err != nil {
+			err = errors.Wrap(err, "error getting GitHub repo contents")
+			continue
+		}
+		break
+	}
 	if err != nil {
-		return nil, fmt.Errorf("error getting GitHub repo contents: %v", err)
+		return nil, err
 	}
 	if fc.GetSize() > MaxFileDownloadSizeBytes {
 		return nil, fmt.Errorf("file size exceeds max (%v bytes): %v", MaxFileDownloadSizeBytes, fc.GetSize())
@@ -228,7 +269,7 @@ func (ghc *GitHubClient) GetFileContents(ctx context.Context, repo string, path 
 			}
 			return []byte(c), nil
 		}
-		rc, _, err := ghc.getClient(ctx).Repositories.DownloadContents(ctx, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
+		rc, resp, err := ghc.getClient(ctx).Repositories.DownloadContents(ctx, rs[0], rs[1], path, &github.RepositoryContentGetOptions{Ref: ref})
 		if err != nil {
 			return nil, errors.Wrap(err, "error downloading file")
 		}
@@ -236,6 +277,9 @@ func (ghc *GitHubClient) GetFileContents(ctx context.Context, repo string, path 
 		c, err := ioutil.ReadAll(rc)
 		if err != nil {
 			return nil, errors.Wrap(err, "error reading file contents")
+		}
+		if resp.StatusCode > 299 || resp.StatusCode < 200 {
+			return nil, fmt.Errorf("unexpected status code downloading file content: %v: %v", resp.StatusCode, string(c))
 		}
 		return c, nil
 	default:
@@ -257,38 +301,71 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 	if len(rs) != 2 {
 		return nil, fmt.Errorf("malformed repo: %v", repo)
 	}
-	hc := http.Client{}
 	// recursively fetch all directories and files
 	var getDirContents func(dirpath string) (map[string]FileContents, error)
 	getDirContents = func(dirpath string) (map[string]FileContents, error) {
-		ctx, cf := context.WithTimeout(ctx, ghTimeout)
-		defer cf()
-		_, dc, _, err := ghc.getClient(ctx).Repositories.GetContents(ctx, rs[0], rs[1], dirpath, &github.RepositoryContentGetOptions{Ref: ref})
+		retries := 3
+		var err error
+		var dc []*github.RepositoryContent
+		for i := 0; i < retries; i++ {
+			if err != nil {
+				eventlogger.GetLogger(ctx).Printf("ghclient: GetDirectoryContents: GetContents retry (%v/%v), prev error: %v", i+1, retries, err)
+				time.Sleep(1 * time.Second)
+			}
+			ctx2, cf := context.WithTimeout(ctx, ghTimeout)
+			defer cf()
+			_, dc, _, err = ghc.getClient(ctx).Repositories.GetContents(ctx2, rs[0], rs[1], dirpath, &github.RepositoryContentGetOptions{Ref: ref})
+			if err != nil {
+				err = errors.Wrap(err, "error getting GitHub repo contents")
+				continue
+			}
+			break
+		}
 		if err != nil {
-			return nil, errors.Wrap(err, "error getting GitHub repo contents")
+			return nil, err
 		}
 		if dc == nil {
 			return nil, fmt.Errorf("directory contents is nil, path may not be a directory: %v", path)
 		}
 		output := map[string]FileContents{}
 		getFile := func(fc *github.RepositoryContent) error {
-			resp, err := hc.Get(fc.GetDownloadURL())
-			if err != nil {
-				return errors.Wrapf(err, "error downloading file: %v", fc.GetPath())
+			var err error
+			var c []byte
+			var ghresp *github.Response
+			var cts io.ReadCloser
+			for i := 0; i < retries; i++ {
+				if err != nil {
+					eventlogger.GetLogger(ctx).Printf("ghclient: GetDirectoryContents: getFile retry (%v/%v), prev error: %v", i+1, retries, err)
+					time.Sleep(1 * time.Second)
+				}
+				ctx2, cf := context.WithTimeout(ctx, ghTimeout)
+				defer cf()
+				cts, ghresp, err = ghc.getClient(ctx).Repositories.DownloadContents(ctx2, rs[0], rs[1], fc.GetPath(), &github.RepositoryContentGetOptions{Ref: ref})
+				if err != nil {
+					err = errors.Wrap(err, "error downloading contents")
+					continue
+				}
+				defer cts.Close()
+				c, err = ioutil.ReadAll(cts)
+				if err != nil {
+					err = errors.Wrapf(err, "error reading HTTP body for file: %v", fc.GetPath())
+					continue
+				}
+				if ghresp.StatusCode > 299 || ghresp.StatusCode < 200 {
+					err = fmt.Errorf("unexpected status code downloading file content: %v: %v", ghresp.StatusCode, string(c))
+					continue
+				}
+				if len(c) != fc.GetSize() {
+					err = fmt.Errorf("unexpected size for %v: %v (wanted %v)", fc.GetPath(), len(c), fc.GetSize())
+					continue
+				}
+				output[fc.GetPath()] = FileContents{
+					Path:     fc.GetPath(),
+					Contents: c,
+				}
+				return nil
 			}
-			defer resp.Body.Close()
-			c, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				return errors.Wrapf(err, "error reading HTTP body for file: %v", fc.GetPath())
-			}
-			if len(c) != fc.GetSize() {
-				return fmt.Errorf("unexpected size for %v: %v (wanted %v)", fc.GetPath(), len(c), fc.GetSize())
-			}
-			output[fc.GetPath()] = FileContents{
-				Path:     fc.GetPath(),
-				Contents: c,
-			}
-			return nil
+			return err
 		}
 		for _, fc := range dc {
 			switch fc.GetType() {
@@ -308,7 +385,7 @@ func (ghc *GitHubClient) GetDirectoryContents(ctx context.Context, repo, path, r
 				// if it's a symlink, we have to do another API call to get details
 				ctx2, cf := context.WithTimeout(ctx, ghTimeout)
 				defer cf()
-				fc2, _, _, err := ghc.getClient(ctx2).Repositories.GetContents(ctx, rs[0], rs[1], fc.GetPath(), &github.RepositoryContentGetOptions{Ref: ref})
+				fc2, _, _, err := ghc.getClient(ctx).Repositories.GetContents(ctx2, rs[0], rs[1], fc.GetPath(), &github.RepositoryContentGetOptions{Ref: ref})
 				if err != nil {
 					return nil, errors.Wrap(err, "error getting symlink details")
 				}
@@ -364,7 +441,7 @@ func (ghc *GitHubClient) GetRepoArchive(ctx context.Context, repo, ref string) (
 			os.Remove(f.Name())
 		}
 	}()
-	resp2, err := ghc.hc.Do(hr)
+	resp2, err := ghc.rhc.Do(ctx, hr)
 	if err != nil {
 		return f.Name(), fmt.Errorf("error performing archive http request: %v", err)
 	}
