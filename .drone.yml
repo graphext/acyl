@@ -9,7 +9,7 @@ steps:
     mtu: 1460
     json_key:
       from_secret: GCR_TOKEN
-    registry: eu.gcr.io
+    registry: europe-west1-docker.pkg.dev
     repo: europe-west1-docker.pkg.dev/graphext-development/docker/acyl
     tags:
     - latest
@@ -22,6 +22,6 @@ steps:
       - pull_request
 ---
 kind: signature
-hmac: c488b9e6efdaba480a2d0cf47f1d3022ebd19536184eca8a7f2882a5f654893b
+hmac: 75bf79da2e218e49e31448c25f443f610572540b46a2dfee0f5a969ca73711ae
 
 ...
