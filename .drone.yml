@@ -10,7 +10,7 @@ steps:
     json_key:
       from_secret: GCR_TOKEN
     registry: eu.gcr.io
-    repo: eu.gcr.io/graphext-development/acyl
+    repo: europe-west1-docker.pkg.dev/graphext-development/docker/acyl
     tags:
     - latest
     - ${DRONE_COMMIT_SHA}
@@ -22,6 +22,6 @@ steps:
       - pull_request
 ---
 kind: signature
-hmac: de9929041fa1dfce44f30bb9ac8da36be982fea6d838e4db443c125a46549fed
+hmac: c488b9e6efdaba480a2d0cf47f1d3022ebd19536184eca8a7f2882a5f654893b
 
 ...

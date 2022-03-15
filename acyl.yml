@@ -7,7 +7,7 @@ target_branches:
 application:
   chart_path: '.helm/charts/acyl'
   chart_vars_path: '.helm/charts/acyl/values.yaml'
-  image: eu.gcr.io/graphext-development/acyl
+  image: europe-west1-docker.pkg.dev/graphext-development/docker/acyl
   value_overrides:
   - "run_migrations=true"
   - "create_cluster_role_binding=true"
@@ -22,7 +22,7 @@ application:
   - "serviceaccount=nitro"
   - "replicaCount=1"
   - "image.tag=latest"
-  - "image.repository=eu.gcr.io/graphext-development/acyl"
+  - "image.repository=europe-west1-docker.pkg.dev/graphext-development/docker/acyl"
   - "resources.requests.cpu=20m"
   - "resources.requests.memory=100Mi"
   - "app.furan2.enabled=true"
@@ -34,7 +34,7 @@ dependencies:
       name: furan
       default_branch: master
       value_overrides:
-        - "image.repository=eu.gcr.io/graphext-development/furan2"
+        - "image.repository=europe-west1-docker.pkg.dev/graphext-development/docker/furan2"
         - "image.tag=latest"
         - 'createServiceAccount=true'
         - 'createRole=true'
