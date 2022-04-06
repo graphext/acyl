@@ -1,5 +1,5 @@
 {{- if .Values.ingress.argo }}
-apiVersion: extensions/v1beta1
+apiVersion: networking.k8s.io
 kind: Ingress
 metadata:
   name: acyl
@@ -17,9 +17,12 @@ spec:
       http:
         paths:
           - path: /
+            pathType: ImplementationSpecific
             backend:
-              serviceName: {{ .Values.service.name }}
-              servicePort: {{ .Values.service.internalPort }}
+              service:
+                name: {{ .Values.service.name }}
+                port:
+                  number: {{ .Values.service.internalPort }}
   tls:
   - hosts:
     - {{ .Values.ingress.argo_host }}
