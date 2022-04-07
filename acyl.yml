@@ -47,7 +47,7 @@ dependencies:
         - "vault.address=https://vault.vault:8200"
         - 'vault.use_k8s_auth=true'
         - 'vault.use_token_auth=false'
-        - 'app.builder_image=moby/buildkit:v0.7.2'
+        - 'app.builder_image=moby/buildkit:v0.10.0'
     - chart_repo_path: 'helm/charts@ee52835ec879e82f46141810b63a09e182c43886:stable/postgresql'
       chart_vars_repo_path: 'helm/charts@ee52835ec879e82f46141810b63a09e182c43886:stable/postgresql/values.yaml'
       value_overrides:
