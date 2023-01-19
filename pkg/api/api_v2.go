@@ -19,6 +19,8 @@ import (
 	"github.com/dollarshaveclub/acyl/pkg/nitro/metahelm"
 	"github.com/dollarshaveclub/acyl/pkg/persistence"
 	"github.com/dollarshaveclub/acyl/pkg/spawner"
+	"github.com/dollarshaveclub/furan/v2/pkg/generated/furanrpc"
+	guuid "github.com/gofrs/uuid"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/lib/pq"
@@ -183,6 +185,7 @@ type V2EventStatusSummaryConfig struct {
 
 type V2EventStatusTreeNodeImage struct {
 	Name      string     `json:"name"`
+	BuildID   string     `json:"build_id"`
 	Error     bool       `json:"error"`
 	Completed *time.Time `json:"completed"`
 	Started   *time.Time `json:"started"`
@@ -198,8 +201,13 @@ func statusImageOrNil(image models.EventStatusTreeNodeImage) *V2EventStatusTreeN
 	if image.Name == "" {
 		return nil
 	}
+	var id string
+	if image.ID != guuid.Nil {
+		id = image.ID.String()
+	}
 	return &V2EventStatusTreeNodeImage{
 		Name:      image.Name,
+		BuildID:   id,
 		Error:     image.Error,
 		Completed: timeOrNil(image.Completed),
 		Started:   timeOrNil(image.Started),
@@ -262,6 +270,12 @@ func V2EventStatusSummaryFromEventStatusSummary(sum *models.EventStatusSummary) 
 	}
 }
 
+type Furan2Client interface {
+	GetBuildEvents(ctx context.Context, id guuid.UUID) (*furanrpc.BuildEventsResponse, error)
+	GetBuildStatus(ctx context.Context, id guuid.UUID) (*furanrpc.BuildStatusResponse, error)
+	Close()
+}
+
 type v2api struct {
 	apiBase
 	dl    persistence.DataLayer
@@ -270,9 +284,10 @@ type v2api struct {
 	sc    config.ServerConfig
 	oauth OAuthConfig
 	kr    metahelm.KubernetesReporter
+	fc    Furan2Client
 }
 
-func newV2API(dl persistence.DataLayer, ge *ghevent.GitHubEventWebhook, es spawner.EnvironmentSpawner, sc config.ServerConfig, oauth OAuthConfig, logger *log.Logger, kr metahelm.KubernetesReporter) (*v2api, error) {
+func newV2API(dl persistence.DataLayer, ge *ghevent.GitHubEventWebhook, es spawner.EnvironmentSpawner, fc Furan2Client, sc config.ServerConfig, oauth OAuthConfig, logger *log.Logger, kr metahelm.KubernetesReporter) (*v2api, error) {
 	return &v2api{
 		apiBase: apiBase{
 			logger: logger,
@@ -283,7 +298,14 @@ func newV2API(dl persistence.DataLayer, ge *ghevent.GitHubEventWebhook, es spawn
 		sc:    sc,
 		oauth: oauth,
 		kr:    kr,
+		fc:    fc,
 	}, nil
+}
+
+func (api *v2api) Close() {
+	if api.fc != nil {
+		api.fc.Close()
+	}
 }
 
 func (api *v2api) register(r *muxtrace.Router) error {
@@ -306,6 +328,7 @@ func (api *v2api) register(r *muxtrace.Router) error {
 	r.HandleFunc("/v2/userenvs/{name}/namespace/pods", middlewareChain(api.userEnvNamePodsHandler, sessionAuthMiddleware.sessionAuth)).Methods("GET")
 	r.HandleFunc("/v2/userenvs/{name}/namespace/pod/{pod}/containers", middlewareChain(api.userEnvPodContainersHandler, sessionAuthMiddleware.sessionAuth)).Methods("GET")
 	r.HandleFunc("/v2/userenvs/{name}/namespace/pod/{pod}/logs", middlewareChain(api.userEnvPodLogsHandler, sessionAuthMiddleware.sessionAuth)).Methods("GET")
+	r.HandleFunc("/v2/userenvs/{name}/imagebuild/{image_build_id}/events", middlewareChain(api.imageBuildEventsHandler, sessionAuthMiddleware.sessionAuth)).Methods("GET")
 
 	// User tokens
 	r.HandleFunc("/v2/user/tokens", middlewareChain(api.apiKeysHandler, sessionAuthMiddleware.sessionAuth)).Methods("GET")
@@ -1241,4 +1264,73 @@ func (api *v2api) apiKeyDestroyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type V2ImageBuildEvents struct {
+	BuildID   uuid.UUID `json:"build_id"`
+	Started   time.Time `json:"started"`
+	Completed time.Time `json:"completed"`
+	Elapsed   string    `json:"elapsed"`
+	Status    string    `json:"status"`
+	Events    []string  `json:"events"`
+}
+
+func timeFromRPCTimestamp(ts furanrpc.Timestamp) time.Time {
+	return time.Unix(ts.Seconds, int64(ts.Nanos)).UTC()
+}
+
+func (api *v2api) imageBuildEventsHandler(w http.ResponseWriter, r *http.Request) {
+	bid := mux.Vars(r)["image_build_id"]
+	if bid == "" {
+		api.rlogger(r).Logf("image build id missing")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	buuid, err := guuid.FromString(bid)
+	if err != nil {
+		api.rlogger(r).Logf("invalid image build id: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	bsr, err := api.fc.GetBuildStatus(r.Context(), buuid)
+	if err != nil {
+		api.rlogger(r).Logf("error getting build status from furan 2: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	bse, err := api.fc.GetBuildEvents(r.Context(), buuid)
+	if err != nil {
+		api.rlogger(r).Logf("error getting build events from furan 2: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	var started, completed time.Time
+	var elapsed time.Duration
+	if bsr.Started != nil {
+		started = timeFromRPCTimestamp(*bsr.Started)
+		elapsed = time.Now().UTC().Sub(started)
+		if bsr.Completed != nil && bsr.Completed.Seconds > 0 {
+			completed = timeFromRPCTimestamp(*bsr.Completed)
+			elapsed = completed.Sub(started)
+		}
+	}
+
+	v2be := &V2ImageBuildEvents{
+		BuildID:   uuid.Must(uuid.Parse(buuid.String())),
+		Started:   started,
+		Completed: completed,
+		Elapsed:   fmt.Sprintf("%s", elapsed.Round(1*time.Second)),
+		Status:    bse.CurrentState.String(),
+		Events:    bse.Messages,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(v2be); err != nil {
+		api.rlogger(r).Logf("error marshaling new user token: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }

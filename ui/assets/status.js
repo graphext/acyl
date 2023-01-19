@@ -132,46 +132,17 @@ function updateConfig(cfg) {
     updateBreadcrumb(cfg);
 }
 
-let tree, svg, diagonal = null;
-
-function treeDimensions () {
+function treeDimensions(levels) {
     let viewwidth = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
 
     let margin = {top: 50, right: 0, bottom: 0, left: 0},
         width = viewwidth - margin.right - margin.left,
-        height = 400 - margin.top - margin.bottom;
-
-    let h = height + margin.top + margin.bottom;
-    let w = width + margin.right + margin.left;
+        height = (100*levels) - margin.top - margin.bottom;
 
     return {
         width,
         height
     }
-}
-
-// createTree creates the initial D3 tree w/o any node definitions after initial page load
-function createTree() {
-
-    const {
-        width,
-        height,
-    } = treeDimensions();
-
-    tree = d3.layout.tree()
-        .nodeSize([4,4])
-        .separation(function(a,b) { return a.parent == b.parent ? 25 : 20 });
-
-    diagonal = d3.svg.diagonal()
-        .projection(function (d) {
-            return [d.x, d.y];
-        });
-
-    svg = d3.select("#envtree").append("svg")
-        .attr("width", width)
-        .attr("height", height)
-        .append("g")
-        .style("transform", "translate(50%, 12%)");
 }
 
 // stratify processes the flat object of nodes into a nested structure for D3
@@ -191,8 +162,44 @@ function updateTree(treedata) {
 
     let root = stratify(treedata);
 
+    let tree = d3.layout.tree()
+        .nodeSize([4,4])
+        .separation(function(a,b) { return a.parent == b.parent ? 25 : 20 });
+
+    let diagonal = d3.svg.diagonal()
+        .projection(function (d) {
+            return [d.x, d.y];
+        });
+
     let nodes = tree.nodes(root).reverse(),
         links = tree.links(nodes);
+
+    let maxdepth = 0;
+    nodes.forEach(function(d) {
+        if (d.depth > maxdepth) {
+            maxdepth = d.depth;
+        }
+    });
+    maxdepth++; // zero-indexed to one-indexed
+
+    let svg;
+    if (document.getElementById("envtree-svg") === null) {
+        const {
+            width,
+            height,
+        } = treeDimensions(maxdepth);
+
+        svg = d3.select("#envtree").append("svg")
+            .attr("id", "envtree-svg")
+            .attr("width", width)
+            .attr("height", height)
+            .append("g")
+            .style("transform", "translate(50%, 12%)");
+    } else {
+        svg = d3.select("#envtree-svg");
+    }
+
+    let imageModalTimers = {};
 
     // Normalize for fixed-depth.
     nodes.forEach(function(d) {
@@ -211,32 +218,124 @@ function updateTree(treedata) {
                 .attr("class", "tree-tooltip btn-group-vertical bg-dark text-light")
                 .style("display", "none");
 
+            nttd.on("mouseleave", function(d) {
+                closeNodeTooltip(`tooltip-${d.id}`);
+            });
+
+            nttd.append("button")
+                .attr("type", "button")
+                .attr("class", "close text-light pb-2")
+                .attr("aria-label", "Close")
+                .attr("onclick", `closeNodeTooltip("tooltip-${d.id}");`)
+                .html(`<span aria-hidden="true">&times;</span></button>`);
+
             nttd.append("h6")
+                .attr("class", "pt-1")
                 .attr("id", `tooltip-${d.id}-name`);
 
             nttd.append("button")
                 .attr("type", "button")
                 .attr("class", "tt-helm-btn btn btn-info btn-sm")
                 .style("display", "none")
+                .style("pointer-events", "none")
                 .html(`<img src="https://helm.sh/img/helm.svg" height="16" width="16"> Chart Dependency`);
 
             nttd.append("button")
                 .attr("type", "button")
                 .style("display", "none")
+                .style("pointer-events", "none")
                 .attr("class", "tt-repo-btn btn btn-light btn-sm");
 
             nttd.append("button")
+                .attr("id", `image-build-btn-${d.id}`)
                 .attr("type", "button")
+                .attr("data-toggle", "modal")
+                .attr("data-target", `#image-modal-${d.id}`)
+                .style("pointer-events", "none")
                 .style("display", "none")
-                .attr("class", "tt-image-btn btn btn-primary btn-sm")
-                .html("Image: Building");
+                .attr("class", "tt-image-btn btn btn-primary btn-sm");
 
             nttd.append("button")
                 .attr("type", "button")
                 .style("display", "none")
+                .style("pointer-events", "none")
                 .attr("class", "tt-chart-btn btn btn-secondary btn-sm")
                 .html("Chart: Waiting");
+
+            // image build details modal
+            let mcnt = d3.select("body")
+                .append("div")
+                .attr("class", "modal")
+                .attr("tabindex", "-1")
+                .attr("role", "dialog")
+                .attr("id", `image-modal-${d.id}`)
+                .attr("aria-labelledby", `image-modal-${d.id}`)
+                .attr("aria-hidden", "true")
+                .append("div")
+                .attr("class", "modal-dialog modal-dialog-scrollable")
+                .attr("role", "document")
+                .append("div")
+                .attr("class", "modal-content text-light bg-dark");
+            let mhdr = mcnt.append("div")
+                .attr("class", "modal-header");
+            mhdr.append("h5")
+                .attr("class", "modal-title")
+                .attr("id", `image-build-title-${d.id}`)
+                .text(`Image Build: ${d.id} ()`);
+            mhdr.append("button")
+                .attr("type", "button")
+                .attr("class", "close text-light")
+                .attr("data-dismiss", "modal")
+                .attr("aria-label", "Close")
+                .html('<span aria-hidden="true">&times;</span>');
+            mcnt.append("div")
+                .attr("class", "modal-body")
+                .attr("id", `image-modal-body-${d.id}`)
+                .append("div")
+                .attr("class", "overflow-auto pod-logs")
+                .attr("id", `image-build-log-${d.id}`);
+            let mftr = mcnt.append("div")
+                .attr("class", "modal-footer");
+            mftr.append("small")
+                .attr("class", "text-muted pr-2")
+                .attr("id", `image-build-elapsed-${d.id}`)
+                .text("Elapsed: 3m 26s");
+            mftr.append("small")
+                .attr("class", "text-muted pr-2")
+                .attr("id", `image-build-refresh-label-${d.id}`)
+                .text("(auto-refreshing every 1s)");
+            mftr.append("button")
+                .attr("type", "button")
+                .attr("id", `image-modal-refresh-btn-${d.id}`)
+                .attr("class", "btn btn-primary")
+                .text("Refresh");
         }
+
+        // update image build buttons if the build ID is available
+        if (d.data.image !== null && d.data.image.build_id !== "") {
+            let btn = document.getElementById(`image-build-btn-${d.id}`);
+            btn.style.pointerEvents = "";
+            btn.setAttribute("onclick", `refreshImageBuildLogs("${d.id}", "${d.data.image.build_id}");`);
+            let refresh = document.getElementById(`image-modal-refresh-btn-${d.id}`);
+            refresh.setAttribute("onclick", `refreshImageBuildLogs("${d.id}", "${d.data.image.build_id}");`);
+
+            // we have to use JQuery for modal events
+            // set up auto-refresh when the image modal is shown
+            $(`#image-modal-${d.id}`).on('shown.bs.modal', function (e) {
+                if (!(d.id in imageModalTimers)) {
+                    imageModalTimers[d.id] = setInterval(function() {
+                        refreshImageBuildLogs(d.id, d.data.image.build_id);
+                    }, 1000);
+                }
+            });
+            $(`#image-modal-${d.id}`).on('hidden.bs.modal', function (e) {
+                if (d.id in imageModalTimers) {
+                    clearTimeout(imageModalTimers[d.id]);
+                    delete imageModalTimers[d.id];
+                }
+            });
+        }
+
     });
 
     function getSVGClass(d) {
@@ -395,23 +494,29 @@ function updateTree(treedata) {
             if (d.data.image === null) {
                 return "tt-image-btn btn btn-primary btn-sm";
             }
+            if (d.data.image.started === null) {
+                return "tt-image-btn btn btn-secondary btn-sm";
+            }
             if (d.data.image.completed === null) {
                 return "tt-image-btn btn btn-primary btn-sm";
             }
             return (d.data.image.error) ? "tt-image-btn btn btn-danger btn-sm" : "tt-image-btn btn btn-success btn-sm";
         })
-        .text(function(d) {
+        .html(function(d) {
             if (d.data.image === null) {
                 return "";
             }
-            let start = new Date(d.data.image.started).getTime();
-            let end = new Date().getTime();
-            if (d.data.image.completed == null) {
-                return `Image: Building... (${millisToMinutesAndSeconds(end - start)})`;
+            if (d.data.image.started === null) {
+                return `Image: (not started)`;
             }
-            end = new Date(d.data.image.completed).getTime();
-            const txt = (d.data.image.error) ? "Error" : "Done";
-            return `Image: ${txt} (${millisToMinutesAndSeconds(end - start)})`;
+            let verb = "Building";
+            let icon = "fa-spinner fa-pulse";
+            if (d.data.image.completed != null) {
+                verb = (d.data.image.error) ? "Error" : "Done";
+                icon = (d.data.image.error) ? "fa-exclamation-circle" : "fa-check-circle";
+            }
+            const info = `<i class="fas ${icon}"></i>`;
+            return `Image: ${verb} ${info}`;
         });
 
     tt.select(".tt-chart-btn")
@@ -473,23 +578,17 @@ function updateTree(treedata) {
     // Define node entry
     let nodeEnter = node.enter().append("g")
         .on("mouseover", function(d) {
+            if (currentVisibleTooltip !== null) {
+                closeNodeTooltip(currentVisibleTooltip);
+            }
+            currentVisibleTooltip = `tooltip-${d.id}`;
             d3.select(`#tooltip-${d.id}`)
                 .style("display", "block")
+                .style("left", (d3.event.pageX ) + "px")
+                .style("top", (d3.event.pageY) + "px")
                 .transition()
                 .duration(300)
                 .style("opacity", 1);
-        })
-        .on("mousemove", function(d){
-            d3.select(`#tooltip-${d.id}`)
-                .style("left", (d3.event.pageX ) + "px")
-                .style("top", (d3.event.pageY) + "px");
-        })
-        .on("mouseout", function(d) {
-            d3.select(`#tooltip-${d.id}`)
-                .transition()
-                .duration(300)
-                .style("opacity", 1e-6)
-                .style("display", "none");
         })
         .attr("class", "node")
         .attr("id", function(d) { return d.id; })
@@ -558,11 +657,57 @@ function updateTree(treedata) {
         .attr("d", diagonal);
 }
 
+// only allow one tooltip to be visible at a time
+let currentVisibleTooltip;
+
+function closeNodeTooltip(nodeid) {
+    currentVisibleTooltip = null;
+    d3.select(`#${nodeid}`)
+        .transition()
+        .duration(300)
+        .style("opacity", 1e-6)
+        .style("display", "none");
+}
+
+function refreshImageBuildLogs(nodeID, buildID) {
+    let req = new XMLHttpRequest();
+
+    req.open('GET', `${apiBaseURL}/v2/userenvs/${env_name}/imagebuild/${buildID}/events`, true);
+    req.onload = function (e) {
+        if (req.status !== 200) {
+            console.log(`image build events request failed: ${req.status}: ${req.responseText}`);
+            return;
+        }
+
+        let data = JSON.parse(req.response);
+        if (data !== null) {
+            let title = document.getElementById(`image-build-title-${nodeID}`);
+            title.innerText = `Image Build: ${nodeID} (${data.status})`;
+            let elapsed = document.getElementById(`image-build-elapsed-${nodeID}`);
+            elapsed.innerText = `Elapsed: ${data.elapsed}`;
+            let mbod = document.getElementById(`image-modal-body-${nodeID}`);
+            let scrolled = mbod.scrollTop === (mbod.scrollHeight - mbod.offsetHeight) || mbod.innerText.length === 0;
+            document.getElementById(`image-build-log-${nodeID}`).innerHTML = data.events.join("<br \>\n");
+            if (scrolled) {
+                mbod.scrollTop = mbod.scrollHeight;
+            }
+        }
+    };
+    req.onerror = function (e) {
+        console.error(`error getting image build events for ${env_name}/${buildID}: ${req.statusText}`);
+    };
+
+    req.send();
+}
+
 
 function updateLogs(logs) {
-    document.getElementById("logsContainer").innerHTML = logs.join("<br \>\n");
     let objDiv = document.getElementById("logsContainer");
-    objDiv.scrollTop = objDiv.scrollHeight;
+    let scrolled = objDiv.scrollTop === (objDiv.scrollHeight - objDiv.offsetHeight) || objDiv.innerText.length === 0;
+    document.getElementById("logsContainer").innerHTML = logs.join("<br \>\n");
+    if (scrolled) {
+        objDiv.scrollTop = objDiv.scrollHeight;
+    }
 }
 
 // containerSelected calls get pod logs with the selected container
@@ -846,7 +991,6 @@ async function update() {
 }
 
 document.addEventListener("DOMContentLoaded", function(){
-    createTree();
     update();
     if (document.getElementById('podLogModal') !== null) {
         $("#podLogModal").on('hidden.bs.modal', function (e) {

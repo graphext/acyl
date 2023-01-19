@@ -86,6 +86,7 @@ type Dependencies struct {
 	DatadogServiceName string
 	Logger             *log.Logger
 	KubernetesReporter metahelm.KubernetesReporter
+	Furan2Client       Furan2Client
 }
 
 // Manager describes an object capable of registering API versions and waiting on requests
@@ -194,6 +195,7 @@ type Dispatcher struct {
 	s                      *http.Server
 	waitgroups             []*sync.WaitGroup
 	uiapi                  *uiapi
+	v2api                  *v2api
 }
 
 // NewDispatcher returns an initialized Dispatcher.
@@ -206,6 +208,9 @@ func NewDispatcher(s *http.Server) *Dispatcher {
 func (d *Dispatcher) Stop() {
 	if d.uiapi != nil {
 		d.uiapi.Close()
+	}
+	if d.v2api != nil {
+		d.v2api.Close()
 	}
 }
 
@@ -275,6 +280,7 @@ func (d *Dispatcher) RegisterVersions(deps *Dependencies, ro ...RegisterOption) 
 		deps.DataLayer,
 		deps.GitHubEventWebhook,
 		deps.EnvironmentSpawner,
+		deps.Furan2Client,
 		deps.ServerConfig,
 		oauthcfg,
 		deps.Logger,

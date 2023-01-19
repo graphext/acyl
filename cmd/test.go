@@ -163,7 +163,12 @@ func init() {
 		log.Printf("warning: no valid data directory found (tried: %v); using ~/.acyl", defaultDataDirs)
 		defaultDataDir = filepath.Join(hd, ".acyl")
 	}
-	configTestCmd.PersistentFlags().StringVar(&testEnvCfg.wordnetpath, "wordnet-file", filepath.Join(defaultDataDir, "acyl", "words.json.gz"), "path to wordnet file for name generation")
+	// prefer wordnet file within this working directory tree if it exists
+	wnfpath := filepath.Join(wd, "data", "words.json.gz")
+	if _, err := os.Stat(wnfpath); err != nil {
+		wnfpath = filepath.Join(defaultDataDir, "acyl", "words.json.gz")
+	}
+	configTestCmd.PersistentFlags().StringVar(&testEnvCfg.wordnetpath, "wordnet-file", wnfpath, "path to wordnet file for name generation")
 	// prefer assets within this working directory if they exist
 	uiAssetsPath := filepath.Join(wd, "ui")
 	if _, err := os.Stat(uiAssetsPath); err != nil {
@@ -311,10 +316,14 @@ func getImageBackend(dl persistence.DataLayer, rc ghclient.RepoClient, auths map
 	switch {
 	case testEnvCfg.buildMode == "none":
 		return &images.NoneBackend{}, nil
-	case strings.HasPrefix(testEnvCfg.buildMode, "furan://"):
-		fb, err := images.NewFuranBuilderBackend([]string{testEnvCfg.buildMode[8:len(testEnvCfg.buildMode)]}, dl, &oldmetrics.FakeCollector{}, ioutil.Discard, "furan.test-client")
+	case strings.HasPrefix(testEnvCfg.buildMode, "furan2://"):
+
+		// TODO: add support for static GH token and Furan 2 API key
+		clierr("Furan 2 support not fully implemented for local use yet")
+
+		fb, err := images.NewFuran2BuilderBackend(testEnvCfg.buildMode[8:len(testEnvCfg.buildMode)], "", 0, false, dl, nil, &oldmetrics.FakeCollector{})
 		if err != nil {
-			return nil, errors.Wrap(err, "error getting furan backend")
+			return nil, errors.Wrap(err, "error getting furan 2 backend")
 		}
 		return fb, nil
 	case testEnvCfg.buildMode == "docker" || testEnvCfg.buildMode == "docker-nopush":

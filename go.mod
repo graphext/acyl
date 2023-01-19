@@ -11,14 +11,15 @@ require (
 	github.com/docker/cli v20.10.7+incompatible
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/docker v20.10.9+incompatible
-	github.com/dollarshaveclub/furan v0.6.1-0.20210604153750-8def5a45ce21
-	github.com/dollarshaveclub/furan/v2 v2.0.1
+	github.com/dollarshaveclub/furan v0.6.1-0.20210604153750-8def5a45ce21 // indirect
+	github.com/dollarshaveclub/furan/v2 v2.0.3
 	github.com/dollarshaveclub/line v0.0.0-20171219191008-fc7a351a8b58
 	github.com/dollarshaveclub/metahelm v0.7.2
 	github.com/dollarshaveclub/pvc v1.0.0
 	github.com/gdamore/tcell v1.1.1
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-pg/pg v6.6.7+incompatible
+	github.com/gofrs/uuid v4.0.0+incompatible
 	github.com/golang-migrate/migrate/v4 v4.15.1 // indirect
 	github.com/golang/mock v1.6.0
 	github.com/google/go-cmp v0.5.6

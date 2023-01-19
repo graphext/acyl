@@ -517,8 +517,8 @@ github.com/docker/spdystream v0.0.0-20160310174837-449fdfce4d96/go.mod h1:Qh8CwZ
 github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815/go.mod h1:WwZ+bS3ebgob9U8Nd0kOddGdZWjyMGR8Wziv+TBNwSE=
 github.com/dollarshaveclub/furan v0.6.1-0.20210604153750-8def5a45ce21 h1:Tk/ZOSwdpQeGWhxqsQEQOGzLzt+3x07e/ctBI7PA9A4=
 github.com/dollarshaveclub/furan v0.6.1-0.20210604153750-8def5a45ce21/go.mod h1:Ao5foCJGuG4XmXLj4F15G8d99pGlGzKf4eNWKlMTsdk=
-github.com/dollarshaveclub/furan/v2 v2.0.1 h1:J9xIuAFOGvXBdoD4WUlBLbVSSfB3i6moyrKlY+T907k=
-github.com/dollarshaveclub/furan/v2 v2.0.1/go.mod h1:my/DmiOT/kkr+jFzo+bpMwKbI/45rHKfBy2MP9wwBvk=
+github.com/dollarshaveclub/furan/v2 v2.0.3 h1:SdNnbOI3KlL+gyurlttEb8tvhVUJNMMyINUFd3PxQl4=
+github.com/dollarshaveclub/furan/v2 v2.0.3/go.mod h1:novAKdaagBp4dJ90deUcK3zzVqMkz7i38dy0IFjh0EA=
 github.com/dollarshaveclub/line v0.0.0-20171219191008-fc7a351a8b58 h1:kdoBBSdDgYqswOFZ3zofDcr67jOQg9Ec/gTix8k+Nh4=
 github.com/dollarshaveclub/line v0.0.0-20171219191008-fc7a351a8b58/go.mod h1:68yw7mK5d4DoK9smWlOrFNwS3BLWVDdJ+DeRT9xybh0=
 github.com/dollarshaveclub/metahelm v0.7.2 h1:2yA1AbyXBoDp6rdOKAfAIY2fe2cLg6bgBXaXpjpxsqU=

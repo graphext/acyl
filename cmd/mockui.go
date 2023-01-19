@@ -18,12 +18,15 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/dollarshaveclub/acyl/pkg/nitro/metahelm"
 	lorem "github.com/dollarshaveclub/acyl/pkg/persistence/golorem"
 	"github.com/dollarshaveclub/acyl/pkg/spawner"
+	"github.com/dollarshaveclub/furan/v2/pkg/generated/furanrpc"
+	guuid "github.com/gofrs/uuid"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	v1 "k8s.io/api/core/v1"
@@ -49,25 +52,7 @@ var mockuiCmd = &cobra.Command{
 	Run:   mockui,
 }
 
-var listenAddr, mockDataFile, mockUser string
-var mockRepos []string
-var readOnly bool
-
-func addUIFlags(cmd *cobra.Command) {
-	brj, err := json.Marshal(&config.DefaultUIBranding)
-	if err != nil {
-		log.Fatalf("error marshaling default UI branding: %v", err)
-	}
-	cmd.PersistentFlags().StringVar(&serverConfig.UIBaseURL, "ui-base-url", "", "External base URL (https://somedomain.com) for UI links")
-	cmd.PersistentFlags().StringVar(&serverConfig.UIPath, "ui-path", "/opt/ui", "Local filesystem path to UI assets")
-	cmd.PersistentFlags().StringVar(&serverConfig.UIBaseRoute, "ui-base-route", "/ui", "Base prefix for UI HTTP routes")
-	cmd.PersistentFlags().StringVar(&serverConfig.UIBrandingJSON, "ui-branding", string(brj), "Branding JSON configuration (see doc)")
-	cmd.PersistentFlags().BoolVar(&githubConfig.OAuth.Enforce, "ui-enforce-oauth", false, "Enforce GitHub App OAuth authn/authz for UI routes")
-	cmd.PersistentFlags().StringVar(&mockDataFile, "mock-data", "testdata/data.json", "Path to mock data file")
-	cmd.PersistentFlags().StringVar(&mockUser, "mock-user", "bobsmith", "Mock username (for sessions)")
-	cmd.PersistentFlags().StringSliceVar(&mockRepos, "mock-repos", []string{"acme/microservice", "acme/widgets", "acme/customers"}, "Mock repo read write permissions (for session user)")
-	cmd.PersistentFlags().BoolVar(&readOnly, "mock-read-only", false, "Mock repo override to read only permissions (for session user)")
-}
+var listenAddr string
 
 func init() {
 	mockuiCmd.PersistentFlags().StringVar(&listenAddr, "listen-addr", "localhost:4000", "Listen address")
@@ -93,10 +78,10 @@ func mockEvents(fdl *persistence.FakeDataLayer, qae []models.QAEnvironment) {
 func mockFailedEventStatus(fdl *persistence.FakeDataLayer, id uuid.UUID) {
 	contStarted := false
 	failedPod := mh.FailedPod{
-		Name: "foo-pod-name",
-		Phase: "foo-pod-phase",
+		Name:    "foo-pod-name",
+		Phase:   "foo-pod-phase",
 		Message: "foo-pod-message",
-		Reason: "foo-pod-reason",
+		Reason:  "foo-pod-reason",
 		Conditions: []v1.PodCondition{
 			v1.PodCondition{
 				Type:               v1.PodConditionType("foo-pod-condition-type"),
@@ -116,11 +101,11 @@ func mockFailedEventStatus(fdl *persistence.FakeDataLayer, id uuid.UUID) {
 						Message: "foo-container-state-message",
 					},
 				},
-				Ready: false,
+				Ready:        false,
 				RestartCount: 7,
-				Image: "foo-container-image",
-				ImageID: "foo-container-image-id",
-				Started: &contStarted,
+				Image:        "foo-container-image",
+				ImageID:      "foo-container-image-id",
+				Started:      &contStarted,
 			},
 		},
 		Logs: map[string][]byte{"foo-container-name": []byte(
@@ -177,8 +162,8 @@ func loadMockData(fpath string) *persistence.FakeDataLayer {
 	for i := range td.APIKeys {
 		td.APIKeys[i].Created = now.AddDate(0, 0, -(i * 3))
 		if td.APIKeys[i].LastUsed.Valid {
-			td.APIKeys[i].LastUsed = pq.NullTime {
-				Time: td.APIKeys[i].Created.Add(1 * time.Hour),
+			td.APIKeys[i].LastUsed = pq.NullTime{
+				Time:  td.APIKeys[i].Created.Add(1 * time.Hour),
 				Valid: true,
 			}
 		}
@@ -220,6 +205,55 @@ func setDummyGHConfig() {
 	copy(githubConfig.OAuth.UserTokenEncKey[:], []byte("00000000000000000000000000000000"))
 }
 
+type fakeFuran2Client struct {
+	sync.RWMutex
+	builds map[guuid.UUID][]string
+}
+
+func (fc *fakeFuran2Client) GetBuildEvents(ctx context.Context, id guuid.UUID) (*furanrpc.BuildEventsResponse, error) {
+	if fc.builds == nil {
+		fc.Lock()
+		fc.builds = make(map[guuid.UUID][]string)
+		fc.Unlock()
+	}
+	fc.RLock()
+	events := fc.builds[id]
+	fc.RUnlock()
+	events = append(events, "foo", "bar", "baz")
+	fc.Lock()
+	fc.builds[id] = events
+	ev := make([]string, len(events))
+	copy(ev, events)
+	fc.Unlock()
+	return &furanrpc.BuildEventsResponse{
+		BuildId:      id.String(),
+		CurrentState: furanrpc.BuildState_SUCCESS,
+		Messages:     ev,
+	}, nil
+}
+
+func (fc *fakeFuran2Client) GetBuildStatus(ctx context.Context, id guuid.UUID) (*furanrpc.BuildStatusResponse, error) {
+	now := time.Now().UTC()
+	done := now.Add((3 * time.Minute) + (36 * time.Second))
+	ts := &furanrpc.Timestamp{
+		Seconds: now.Unix(),
+		Nanos:   int32(now.Nanosecond()),
+	}
+	ts2 := &furanrpc.Timestamp{
+		Seconds: done.Unix(),
+		Nanos:   int32(done.Nanosecond()),
+	}
+	return &furanrpc.BuildStatusResponse{
+		BuildId:      id.String(),
+		BuildRequest: &furanrpc.BuildRequest{},
+		State:        furanrpc.BuildState_SUCCESS,
+		Started:      ts,
+		Completed:    ts2,
+	}, nil
+}
+
+func (fc *fakeFuran2Client) Close() {}
+
 func mockui(cmd *cobra.Command, args []string) {
 
 	logger := log.New(os.Stderr, "", log.LstdFlags)
@@ -237,12 +271,14 @@ func mockui(cmd *cobra.Command, args []string) {
 	uf := func(ctx context.Context, rd models.RepoRevisionData) (string, error) {
 		return "updated environment", nil
 	}
+
 	deps := &api.Dependencies{
-		DataLayer:    dl,
-		ServerConfig: serverConfig,
-		Logger:       logger,
+		DataLayer:          dl,
+		ServerConfig:       serverConfig,
+		Logger:             logger,
 		EnvironmentSpawner: &spawner.FakeEnvironmentSpawner{UpdateFunc: uf},
 		KubernetesReporter: metahelm.FakeKubernetesReporter{FakePodLogFilePath: "pkg/nitro/metahelm/testdata/pod_logs.log"},
+		Furan2Client:       &fakeFuran2Client{},
 	}
 
 	serverConfig.UIBaseURL = "http://" + listenAddr
