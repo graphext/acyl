@@ -204,7 +204,6 @@ require (
 	golang.org/x/tools v0.7.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	gonum.org/v1/gonum v0.13.0 // indirect
-	gonum.org/v1/netlib v0.0.0-20190331212654-76723241ea4e // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230306155012-7f2fa6fef1f4 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
@@ -231,7 +230,7 @@ replace (
 	github.com/docker/docker => github.com/docker/docker v20.10.5+incompatible
 	github.com/google/go-github => github.com/google/go-github/v30 v30.1.1-0.20200328133946-34cb1d623f03
 	github.com/hashicorp/vault/api => github.com/hashicorp/vault/api v1.0.5-0.20200818184811-84f6d9a065c2
-	gonum.org/v1/gonum => gonum.org/v1/gonum v0.9.1
+	gonum.org/v1/gonum => gonum.org/v1/gonum v0.13.0
 	gopkg.in/jfontan/go-billy-desfacer.v0 v0.0.0-20190109211405-e5f0f2cddac1 => github.com/bkeroackdsc/go-billy-desfacer v0.0.0-20190109211405-e5f0f2cddac1
 )
 
