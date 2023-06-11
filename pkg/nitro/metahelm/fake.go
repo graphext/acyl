@@ -167,7 +167,7 @@ func stubPodData(ns string) *v1.PodList {
 	pod2NotReadyContainerStatus := v1.ContainerStatus{
 		Name:         "bar-app-not-ready",
 		RestartCount: 4,
-		Ready: false,
+		Ready:        false,
 	}
 	pod2 := v1.Pod{
 		Status: v1.PodStatus{

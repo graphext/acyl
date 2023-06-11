@@ -112,9 +112,9 @@ func (tkc *testKubeClient) ToRawKubeConfigLoader() clientcmd.ClientConfig {
 func fakeHelmConfiguration(t *testing.T) *action.Configuration {
 	t.Helper()
 	ac := &action.Configuration{
-		Releases:       storage.Init(driver.NewMemory()),
-		KubeClient:     &testKubeClient{},
-		Capabilities:   chartutil.DefaultCapabilities,
+		Releases:     storage.Init(driver.NewMemory()),
+		KubeClient:   &testKubeClient{},
+		Capabilities: chartutil.DefaultCapabilities,
 		Log: func(format string, v ...interface{}) {
 			t.Helper()
 			t.Logf(format, v)
@@ -621,7 +621,7 @@ func TestMetahelmInstallCharts(t *testing.T) {
 		mc: &metrics.FakeCollector{},
 		mhmf: func(ctx context.Context, kc kubernetes.Interface, hccfg config.HelmClientConfig, namespace string) (*metahelm.Manager, error) {
 			return &metahelm.Manager{
-				K8c: fkc,
+				K8c:  fkc,
 				HCfg: hcfg,
 				LogF: metahelm.LogFunc(func(msg string, args ...interface{}) {
 					eventlogger.GetLogger(context.Background()).Printf("metahelm-test: "+msg, args...)
@@ -689,13 +689,13 @@ func TestMetahelmInstallAndUpgradeChartsBuildError(t *testing.T) {
 	dl.CreateQAEnvironment(context.Background(), nenv.Env)
 	hcfg := fakeHelmConfiguration(t)
 	ci := ChartInstaller{
-		kc:  fkc,
-		dl:  dl,
-		ib:  ib,
-		mc:  &metrics.FakeCollector{},
+		kc: fkc,
+		dl: dl,
+		ib: ib,
+		mc: &metrics.FakeCollector{},
 		mhmf: func(ctx context.Context, kc kubernetes.Interface, hccfg config.HelmClientConfig, namespace string) (*metahelm.Manager, error) {
 			return &metahelm.Manager{
-				K8c: fkc,
+				K8c:  fkc,
 				HCfg: hcfg,
 				LogF: metahelm.LogFunc(func(msg string, args ...interface{}) {
 					eventlogger.GetLogger(context.Background()).Printf("metahelm-test: "+msg, args...)
@@ -718,13 +718,13 @@ func TestMetahelmInstallAndUpgradeChartsBuildError(t *testing.T) {
 	defer b2.Stop()
 	nenv.Releases = map[string]string{"foo": "foo", "bar": "bar"}
 	ci = ChartInstaller{
-		kc:  fkc,
-		dl:  dl,
-		ib:  ib,
-		mc:  &metrics.FakeCollector{},
+		kc: fkc,
+		dl: dl,
+		ib: ib,
+		mc: &metrics.FakeCollector{},
 		mhmf: func(ctx context.Context, kc kubernetes.Interface, hccfg config.HelmClientConfig, namespace string) (*metahelm.Manager, error) {
 			return &metahelm.Manager{
-				K8c: fkc,
+				K8c:  fkc,
 				HCfg: hcfg,
 				LogF: metahelm.LogFunc(func(msg string, args ...interface{}) {
 					eventlogger.GetLogger(context.Background()).Printf("metahelm-test: "+msg, args...)
@@ -993,13 +993,13 @@ func TestMetahelmBuildAndInstallCharts(t *testing.T) {
 	dl.CreateQAEnvironment(context.Background(), nenv.Env)
 	hcfg := fakeHelmConfiguration(t)
 	ci := ChartInstaller{
-		kc:  fkc,
-		dl:  dl,
-		ib:  ib,
-		mc:  &metrics.FakeCollector{},
+		kc: fkc,
+		dl: dl,
+		ib: ib,
+		mc: &metrics.FakeCollector{},
 		mhmf: func(ctx context.Context, kc kubernetes.Interface, hccfg config.HelmClientConfig, namespace string) (*metahelm.Manager, error) {
 			return &metahelm.Manager{
-				K8c: fkc,
+				K8c:  fkc,
 				HCfg: hcfg,
 				LogF: metahelm.LogFunc(func(msg string, args ...interface{}) {
 					eventlogger.GetLogger(context.Background()).Printf("metahelm-test: "+msg, args...)
@@ -1083,13 +1083,13 @@ func TestMetahelmBuildAndInstallThenUpgradeCharts(t *testing.T) {
 	dl.CreateQAEnvironment(context.Background(), nenv.Env)
 	hcfg := fakeHelmConfiguration(t)
 	ci := ChartInstaller{
-		kc:  fkc,
-		dl:  dl,
-		ib:  ib,
-		mc:  &metrics.FakeCollector{},
+		kc: fkc,
+		dl: dl,
+		ib: ib,
+		mc: &metrics.FakeCollector{},
 		mhmf: func(ctx context.Context, kc kubernetes.Interface, hccfg config.HelmClientConfig, namespace string) (*metahelm.Manager, error) {
 			return &metahelm.Manager{
-				K8c: fkc,
+				K8c:  fkc,
 				HCfg: hcfg,
 				LogF: metahelm.LogFunc(func(msg string, args ...interface{}) {
 					eventlogger.GetLogger(context.Background()).Printf("metahelm-test: "+msg, args...)
@@ -1244,22 +1244,22 @@ func TestMetahelmCleanup(t *testing.T) {
 		dl: dl,
 	}
 	ci.Cleanup(context.Background(), maxAge)
-	if _, err := fkc.CoreV1().Namespaces().Get(context.Background(),"foo", metav1.GetOptions{}); err == nil {
+	if _, err := fkc.CoreV1().Namespaces().Get(context.Background(), "foo", metav1.GetOptions{}); err == nil {
 		t.Fatalf("should have failed to find namespace foo")
 	}
-	if _, err := fkc.CoreV1().Namespaces().Get(context.Background(),"bar", metav1.GetOptions{}); err == nil {
+	if _, err := fkc.CoreV1().Namespaces().Get(context.Background(), "bar", metav1.GetOptions{}); err == nil {
 		t.Fatalf("should have failed to find namespace bar")
 	}
-	if _, err := fkc.CoreV1().Namespaces().Get(context.Background(),"uninvolved", metav1.GetOptions{}); err != nil {
+	if _, err := fkc.CoreV1().Namespaces().Get(context.Background(), "uninvolved", metav1.GetOptions{}); err != nil {
 		t.Fatalf("should have found namespace uninvolved: %v", err)
 	}
-	if _, err := fkc.RbacV1().ClusterRoleBindings().Get(context.Background(),"foo", metav1.GetOptions{}); err == nil {
+	if _, err := fkc.RbacV1().ClusterRoleBindings().Get(context.Background(), "foo", metav1.GetOptions{}); err == nil {
 		t.Fatalf("should have failed to find CRB foo")
 	}
-	if _, err := fkc.RbacV1().ClusterRoleBindings().Get(context.Background(),"bar", metav1.GetOptions{}); err == nil {
+	if _, err := fkc.RbacV1().ClusterRoleBindings().Get(context.Background(), "bar", metav1.GetOptions{}); err == nil {
 		t.Fatalf("should have failed to find CRB bar")
 	}
-	if _, err := fkc.RbacV1().ClusterRoleBindings().Get(context.Background(),"uninvolved", metav1.GetOptions{}); err != nil {
+	if _, err := fkc.RbacV1().ClusterRoleBindings().Get(context.Background(), "uninvolved", metav1.GetOptions{}); err != nil {
 		t.Fatalf("should have found CRB uninvolved: %v", err)
 	}
 }

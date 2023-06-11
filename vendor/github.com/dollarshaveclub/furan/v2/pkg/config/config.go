@@ -26,11 +26,16 @@ type QuayConfig struct {
 type AWSConfig struct {
 	Region           string
 	CacheBucket      string
+	CacheHost        string
 	CacheKeyPrefix   string
 	AccessKeyID      string `secret:"aws/access_key_id"`
 	SecretAccessKey  string `secret:"aws/secret_access_key"`
 	EnableECR        bool
 	ECRRegistryHosts []string
+}
+
+type GCRConfig struct {
+	ServiceAccount string `secret:"gcr/service_account"`
 }
 
 type DBConfig struct {

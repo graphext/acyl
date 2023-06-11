@@ -54,7 +54,7 @@ var configInfoCmd = &cobra.Command{
 	Use:   "info",
 	Short: "get summary information from an acyl.yml",
 	Long: `Parses, validates and displays summary information about the acyl.yml in the current directory
-(which must be a valid git repo with GitHub remotes). Branch matching will use the currently checked-out branch and the value 
+(which must be a valid git repo with GitHub remotes). Branch matching will use the currently checked-out branch and the value
 passed in for the base-branch flag.
 
 Paths provided by --search-paths will be recursively searched for valid git repositories containing GitHub remotes,
