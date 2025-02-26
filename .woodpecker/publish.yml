@@ -1,0 +1,49 @@
+labels:
+  hostname: secondary-rwo
+
+when:
+  branch: [deploy]
+  event: push
+
+variables:
+  - &kaniko_settings
+     registry: europe-west1-docker.pkg.dev
+     username: _json_key_base64
+     cache: true
+     password:
+       from_secret: GAR_DOCKER_SA_KEY
+
+clone:
+  - name: git
+    image: woodpeckerci/plugin-git
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 100m
+          limits:
+            memory: 128Mi
+            cpu: 100m
+
+steps:
+  - name: publish
+    image: woodpeckerci/plugin-kaniko
+    settings:
+      repo: graphext-development/docker/acyl
+      <<: *kaniko_settings
+      tags:
+        - latest
+        - ${CI_COMMIT_SHA}
+      dockerfile: Dockerfile
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            memory: 4Gi
+            cpu: 2000m
+            ephemeral-storage: 10Gi
+          limits:
+            memory: 8Gi
+            cpu: 4000m
+            ephemeral-storage: 10Gi

@@ -18,6 +18,7 @@ import (
 )
 
 // ActionType enumerates the different actions we need to take
+//
 //go:generate stringer -type=ActionType
 type ActionType int
 
@@ -31,10 +32,10 @@ const (
 
 // GitHub actions that are relevant
 var supportedActions = map[string]ActionType{
-	"opened":      CreateNew,
-	"reopened":    CreateNew,
+	"labeled":     CreateNew,
 	"synchronize": Update,
 	"closed":      Destroy,
+	"unlabelled":  Destroy,
 }
 
 // BadSignature is the error type for invalid signatures
@@ -70,6 +71,7 @@ type GitHubEventUser struct {
 }
 
 // GitHubEventType enumerates the types of webhook events we support
+//
 //go:generate stringer -type=GitHubEventType
 type GitHubEventType int
 

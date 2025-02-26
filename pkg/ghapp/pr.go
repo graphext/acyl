@@ -27,7 +27,7 @@ type prEventHandler struct {
 
 // Handles specifies the type of events handled
 func (prh *prEventHandler) Handles() []string {
-	return []string{"pull_request"}
+	return []string{"pull_request_review_comment"}
 }
 
 // Handle is called by the handler when an event is received
@@ -84,6 +84,15 @@ func (prh *prEventHandler) Handle(ctx context.Context, eventType, deliveryID str
 	if !ok {
 		response(http.StatusOK, "action not relevant: "+action, "")
 		return nil
+	}
+
+	// Check if label is "acyl"
+	if action == "labeled" {
+		label := event.Label.GetName()
+		if label != "acyl" {
+			response(http.StatusOK, "label not relevant: "+label, "")
+			return nil
+		}
 	}
 
 	elogger, err := prh.getlogger(payload, did, rrd.Repo, rrd.PullRequest)
