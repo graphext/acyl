@@ -27,7 +27,7 @@ type prEventHandler struct {
 
 // Handles specifies the type of events handled
 func (prh *prEventHandler) Handles() []string {
-	return []string{"pull_request_review_comment"}
+	return []string{"pull_request"}
 }
 
 // Handle is called by the handler when an event is received
