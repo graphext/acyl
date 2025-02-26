@@ -26,6 +26,7 @@ clone:
             memory: 128Mi
             cpu: 100m
 
+
 steps:
   - name: publish
     image: woodpeckerci/plugin-kaniko
