@@ -87,8 +87,13 @@ func (prh *prEventHandler) Handle(ctx context.Context, eventType, deliveryID str
 	}
 
 	// Check if label is "acyl"
+	label := event.Label.GetName()
 	if action == "labeled" {
-		label := event.Label.GetName()
+		if label != "acyl" {
+			response(http.StatusOK, "label not relevant: "+label, "")
+			return nil
+		}
+	} else if action == "unlabeled" {
 		if label != "acyl" {
 			response(http.StatusOK, "label not relevant: "+label, "")
 			return nil
