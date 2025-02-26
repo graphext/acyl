@@ -86,6 +86,20 @@ func (prh *prEventHandler) Handle(ctx context.Context, eventType, deliveryID str
 		return nil
 	}
 
+	// Check if label is "acyl"
+	label := event.Label.GetName()
+	if action == "labeled" {
+		if label != "acyl" {
+			response(http.StatusOK, "label not relevant: "+label, "")
+			return nil
+		}
+	} else if action == "unlabeled" {
+		if label != "acyl" {
+			response(http.StatusOK, "label not relevant: "+label, "")
+			return nil
+		}
+	}
+
 	elogger, err := prh.getlogger(payload, did, rrd.Repo, rrd.PullRequest)
 	if err != nil {
 		return errors.Wrap(err, "error getting event logger")
