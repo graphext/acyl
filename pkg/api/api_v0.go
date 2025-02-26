@@ -100,7 +100,7 @@ func newV0API(dl persistence.DataLayer, ge *ghevent.GitHubEventWebhook, es spawn
 		sc: sc,
 		rc: rc,
 	}
-	gha, err := ghapp.NewGitHubApp(ghc.PrivateKeyPEM, ghc.AppID, ghc.AppHookSecret, []string{"opened", "reopened", "closed", "synchronize"}, api.processWebhook, dl)
+	gha, err := ghapp.NewGitHubApp(ghc.PrivateKeyPEM, ghc.AppID, ghc.AppHookSecret, []string{"labeled", "closed", "synchronize"}, api.processWebhook, dl)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating GitHub app")
 	}
@@ -211,9 +211,7 @@ func (api *v0api) processWebhook(ctx context.Context, action string, rrd models.
 	}
 
 	switch action {
-	case "reopened":
-		fallthrough
-	case "opened":
+	case "labeled":
 		log("starting async processing for %v", action)
 		api.wg.Add(1)
 		go func() {
@@ -243,7 +241,7 @@ func (api *v0api) processWebhook(ctx context.Context, action string, rrd models.
 			}
 			log("success processing update event (env: %q); done", name)
 		}()
-	case "closed":
+	case "closed", "unlabeled":
 		log("starting async processing for %v", action)
 		api.wg.Add(1)
 		go func() {
