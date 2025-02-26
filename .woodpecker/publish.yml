@@ -2,7 +2,7 @@ labels:
   hostname: secondary-rwo
 
 when:
-  branch: [deploy]
+  branch: deploy
   event: push
 
 variables:
