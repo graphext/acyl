@@ -100,7 +100,7 @@ func newV0API(dl persistence.DataLayer, ge *ghevent.GitHubEventWebhook, es spawn
 		sc: sc,
 		rc: rc,
 	}
-	gha, err := ghapp.NewGitHubApp(ghc.PrivateKeyPEM, ghc.AppID, ghc.AppHookSecret, []string{"labeled", "closed", "synchronize"}, api.processWebhook, dl)
+	gha, err := ghapp.NewGitHubApp(ghc.PrivateKeyPEM, ghc.AppID, ghc.AppHookSecret, []string{"labeled", "closed", "synchronize", "unlabeled"}, api.processWebhook, dl)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating GitHub app")
 	}
