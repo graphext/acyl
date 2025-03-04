@@ -87,15 +87,24 @@ func (prh *prEventHandler) Handle(ctx context.Context, eventType, deliveryID str
 	}
 
 	// Check if label is "acyl"
-	label := event.Label.GetName()
-	if action == "labeled" {
+	switch action {
+	case "labeled", "unlabeled":
+		label := event.Label.GetName()
 		if label != "acyl" {
 			response(http.StatusOK, "label not relevant: "+label, "")
 			return nil
 		}
-	} else if action == "unlabeled" {
-		if label != "acyl" {
-			response(http.StatusOK, "label not relevant: "+label, "")
+	case "synchronize":
+		labels := event.PullRequest.Labels
+		acyl := false
+		for _, label := range labels {
+			if label.GetName() == "acyl" {
+				acyl = true
+				break
+			}
+		}
+		if !acyl {
+			response(http.StatusOK, "not synchronizing acyl untagged repo", "")
 			return nil
 		}
 	}
