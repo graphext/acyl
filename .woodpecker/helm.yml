@@ -1,0 +1,44 @@
+labels:
+  hostname: secondary-rwo
+
+when:
+  event: push
+  branch: master
+  path:
+    include: ['.helm/**']
+
+variables:
+  - &helm_image alpine/helm:3.17
+  - &default_backend_options
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 100m
+          limits:
+            memory: 128Mi
+            cpu: 100m
+
+clone:
+  - name: git
+    image: woodpeckerci/plugin-git
+    <<: *default_backend_options
+
+steps:
+  - name: lint
+    image: *helm_image
+    commands:
+      - helm lint .helm/charts/acyl
+  - name: release-chart
+    image: *helm_image
+    environment:
+      GAR_HELM_SA_KEY:
+        from_secret: GAR_HELM_SA_KEY
+    commands:
+      - cd .helm/charts && helm package acyl/
+      - echo -n $GAR_HELM_SA_KEY | helm registry login europe-west1-docker.pkg.dev -u _json_key_base64 --password-stdin
+      - helm push --debug acyl-$(yq '.version' < acyl/Chart.yaml).tgz oci://europe-west1-docker.pkg.dev/graphext-0/helm
+    depends_on:
+      - lint
+    <<: *default_backend_options
